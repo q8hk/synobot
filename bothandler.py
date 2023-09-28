@@ -425,6 +425,13 @@ class BotHandler(single.SingletonInstane):
             self.ds.CreateTaskForUrl(command)
             #update.message.reply_text('마그넷 링크를 등록하였습니다')
             update.message.reply_text(self.lang.GetBotHandlerLang('noti_magnet_link'))
+        elif command.startswith('https://www.youtube.com/') or command.startswith('http://www.youtube.com/') or command.startswith('https://youtube.com/') or command.startswith('http://youtube.com/') or command.startswith('https://youtu.be/'):
+            log.info("Detected Youtube link, Create Task URL for Youtube")
+            self.ds.CreateTaskForUrl(command)
+            #update.message.reply_text('마그넷 링크를 등록하였습니다')
+            update.message.reply_text(self.lang.GetBotHandlerLang('noti_youtube_link'))
+            # Handle YouTube URL
+            print("Handling YouTube URL...")
         else:
             # Send Help Message
             #update.message.reply_text('지원 되지 않는 명령입니다')

@@ -19,6 +19,7 @@
         "noti_delete_pw" : "Deleteed Password Message.",
         "noti_delete_otp" : "Deleted OTP Message",
         "noti_magnet_link" : "Added task magnet link",
+        "noti_youtube_link" : "Added task youtube link",
         "noti_torrent_file" : "Added task torrent file(%s).",
         "noti_torrent_file_fail" : "Added task torrent file(%s) Fail.",
         "noti_not_support_cmd" : "Not support command",
