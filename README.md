@@ -245,3 +245,15 @@ To configure the OTP automatic input feature introduced in version 0.13, follow 
 For inquiries, please use the synobot GitHub repository:
 
 <a href="https://github.com/acidpop/synobot_public" target="_blank">synobot GitHub</a>
+
+## Development Tests
+
+The characterization suite runs without contacting Telegram or a Synology NAS.
+External responses are replaced with deterministic test doubles and sanitized
+DSM fixtures.
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m coverage run -m unittest discover -s tests -v
+python -m coverage report
+```

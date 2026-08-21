@@ -277,12 +277,12 @@ class SynoDownloadStation(single.SingletonInstane):
                 continue
             
             # additional 아이템이 없다면 0 정보 전송
-            if 'additional' in item == False:
+            if 'additional' not in item:
                 self.SendTaskList(tor_id, tor_size, tor_status, tor_title, tor_size_download, tor_size_upload, tor_speed_down, tor_speed_up)
                 continue
 
             # transfer 아이템이 없다면 0 정보 전송
-            if 'transfer' in item['additional'] == False:
+            if 'transfer' not in item['additional']:
                 self.SendTaskList(tor_id, tor_size, tor_status, tor_title, tor_size_download, tor_size_upload, tor_speed_down, tor_speed_up)
                 continue
 
