@@ -124,6 +124,11 @@ def build_application(
         application.add_handler(
             CallbackQueryHandler(destination_control, pattern=r"^dest:")
         )
+    command_follow_up = getattr(handlers, "command_follow_up", None)
+    if command_follow_up is not None:
+        application.add_handler(
+            CallbackQueryHandler(command_follow_up, pattern=r"^cmd:")
+        )
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.text)
     )

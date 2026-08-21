@@ -38,6 +38,11 @@ does not need to run on the NAS itself.
 
 Unknown users and group chats are denied by default. The current 1.0 configuration grants configured users administrator access; finer-grained user-role configuration is planned for a later release.
 
+Parameterized commands are conversational. If `/add`, `/destination`, `/language`,
+or `/notifications` is sent without its required value, Synobot explains what is
+missing and offers relevant buttons. A text message sent within five minutes is
+treated as the missing argument to that command; users can also cancel the prompt.
+
 ## Quick start with Compose
 
 1. Create a Telegram bot with [BotFather](https://t.me/BotFather) and retain its token securely.
