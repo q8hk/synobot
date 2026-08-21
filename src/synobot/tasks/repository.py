@@ -11,7 +11,7 @@ from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Tuple
 from .models import NotificationPreference, Task, TaskEvent, utc_now
 
 
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "3"
 _MIGRATION_KEY = "legacy_taskdata_migrated"
 
 
@@ -60,7 +60,8 @@ class SQLiteTaskRepository:
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 completed_at TEXT,
-                removed_at TEXT
+                removed_at TEXT,
+                destination TEXT
             );
             CREATE TABLE IF NOT EXISTS task_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -88,18 +89,36 @@ class SQLiteTaskRepository:
                 CHECK((quiet_start IS NULL AND quiet_end IS NULL) OR
                       (quiet_start IS NOT NULL AND quiet_end IS NOT NULL))
             );
+            CREATE TABLE IF NOT EXISTS destination_preferences (
+                user_id INTEGER PRIMARY KEY,
+                destination TEXT,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS destination_usage (
+                user_id INTEGER NOT NULL,
+                destination TEXT NOT NULL,
+                use_count INTEGER NOT NULL DEFAULT 1 CHECK(use_count > 0),
+                last_used_at TEXT NOT NULL,
+                PRIMARY KEY(user_id, destination)
+            );
             """
         )
+        columns = {
+            str(item["name"])
+            for item in self._connection.execute("PRAGMA table_info(tasks)").fetchall()
+        }
+        if "destination" not in columns:
+            self._connection.execute("ALTER TABLE tasks ADD COLUMN destination TEXT")
         row = self._connection.execute(
             "SELECT value FROM app_metadata WHERE key = 'schema_version'"
         ).fetchone()
-        if row is not None and row["value"] not in ("1", SCHEMA_VERSION):
+        if row is not None and row["value"] not in ("1", "2", SCHEMA_VERSION):
             raise RuntimeError("Unsupported task database schema version: %s" % row["value"])
         self._connection.execute(
             "INSERT OR IGNORE INTO app_metadata(key, value) VALUES('schema_version', ?)",
             (SCHEMA_VERSION,),
         )
-        if row is not None and row["value"] == "1":
+        if row is not None and row["value"] in ("1", "2"):
             self._connection.execute(
                 "UPDATE app_metadata SET value=? WHERE key='schema_version'", (SCHEMA_VERSION,)
             )
@@ -136,17 +155,20 @@ class SQLiteTaskRepository:
             connection.execute(
                 """INSERT INTO tasks(
                     task_id,title,size_bytes,owner,status,downloaded_bytes,uploaded_bytes,
-                    download_speed,upload_speed,created_at,updated_at,completed_at,removed_at
-                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    download_speed,upload_speed,created_at,updated_at,completed_at,removed_at,
+                    destination
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(task_id) DO UPDATE SET
                     title=excluded.title,size_bytes=excluded.size_bytes,owner=excluded.owner,
                     status=excluded.status,downloaded_bytes=excluded.downloaded_bytes,
                     uploaded_bytes=excluded.uploaded_bytes,download_speed=excluded.download_speed,
                     upload_speed=excluded.upload_speed,updated_at=excluded.updated_at,
-                    completed_at=COALESCE(excluded.completed_at,tasks.completed_at),removed_at=NULL""",
+                    completed_at=COALESCE(excluded.completed_at,tasks.completed_at),removed_at=NULL,
+                    destination=COALESCE(excluded.destination,tasks.destination)""",
                 (task.task_id, task.title, task.size_bytes, task.owner, task.status,
                  task.downloaded_bytes, task.uploaded_bytes, task.download_speed,
-                 task.upload_speed, _iso(created), _iso(now), _iso(completed), None),
+                 task.upload_speed, _iso(created), _iso(now), _iso(completed), None,
+                 task.destination),
             )
             old_status = str(previous["status"]) if previous else None
             reappeared = previous is not None and previous["removed_at"] is not None
@@ -267,6 +289,45 @@ class SQLiteTaskRepository:
             )
         return preference
 
+    def get_destination_preference(self, user_id: int) -> Optional[str]:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT destination FROM destination_preferences WHERE user_id=?",
+                (int(user_id),),
+            ).fetchone()
+        return str(row["destination"]) if row and row["destination"] else None
+
+    def set_destination_preference(
+        self, user_id: int, destination: Optional[str]
+    ) -> Optional[str]:
+        with self._transaction() as connection:
+            connection.execute(
+                """INSERT INTO destination_preferences(user_id,destination,updated_at)
+                   VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET
+                   destination=excluded.destination,updated_at=excluded.updated_at""",
+                (int(user_id), destination, _iso(utc_now())),
+            )
+        return destination
+
+    def record_destination_use(self, user_id: int, destination: str) -> None:
+        with self._transaction() as connection:
+            connection.execute(
+                """INSERT INTO destination_usage(user_id,destination,use_count,last_used_at)
+                   VALUES(?,?,1,?) ON CONFLICT(user_id,destination) DO UPDATE SET
+                   use_count=destination_usage.use_count+1,
+                   last_used_at=excluded.last_used_at""",
+                (int(user_id), destination, _iso(utc_now())),
+            )
+
+    def destination_usage(self, user_id: int) -> List[Tuple[str, int]]:
+        with self._lock:
+            rows = self._connection.execute(
+                """SELECT destination,use_count FROM destination_usage
+                   WHERE user_id=? ORDER BY use_count DESC,last_used_at DESC""",
+                (int(user_id),),
+            ).fetchall()
+        return [(str(row["destination"]), int(row["use_count"])) for row in rows]
+
     def migrate_legacy_json(self, legacy_path: Path) -> int:
         """Import a complete legacy file once; the source is never changed."""
         path = Path(legacy_path)
@@ -310,7 +371,7 @@ class SQLiteTaskRepository:
                     int(row["uploaded_bytes"]), int(row["download_speed"]),
                     int(row["upload_speed"]), _datetime(row["created_at"]),
                     _datetime(row["updated_at"]), _datetime(row["completed_at"]),
-                    _datetime(row["removed_at"]))
+                    _datetime(row["removed_at"]), row["destination"])
 
     @staticmethod
     def _event(row: sqlite3.Row) -> TaskEvent:

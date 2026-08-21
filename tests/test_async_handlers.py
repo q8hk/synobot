@@ -42,7 +42,9 @@ def update(user_id=1, chat_type="private", text=None, document=None, callback_da
 
 def adapter(client=None):
     client = client or Mock(authenticated=False)
-    core = SimpleNamespace(client=client)
+    tasks = Mock()
+    tasks.destination_preference.return_value = None
+    core = SimpleNamespace(client=client, tasks=tasks)
     policy = AuthorizationPolicy.create([1], operators=[2], viewers=[3])
     return TelegramHandlers(core, policy, settings()), client
 

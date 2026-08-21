@@ -42,6 +42,7 @@ def test_transport_task_conversion_preserves_transfer_values():
         username="user",
         status="downloading",
         transfer=TransferStats(10, 2, 3, 4),
+        raw={"additional": {"detail": {"destination": "Movies"}}},
     )
 
     result = persistent_task(source)
@@ -49,6 +50,7 @@ def test_transport_task_conversion_preserves_transfer_values():
     assert result.task_id == "1"
     assert result.downloaded_bytes == 10
     assert result.uploaded_bytes == 2
+    assert result.destination == "Movies"
     assert result.download_speed == 3
     assert result.upload_speed == 4
 

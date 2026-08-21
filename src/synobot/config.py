@@ -133,6 +133,7 @@ class Settings:
     dsm_password: Optional[str] = None
     dsm_totp_secret: Optional[str] = None
     telegram_dsm_password_user_id: Optional[int] = None
+    dsm_destination_presets: Tuple[str, ...] = ("TVShows", "Movies", "Download")
     deprecated_settings: Tuple[str, ...] = ()
 
     @classmethod
@@ -200,6 +201,17 @@ class Settings:
         language = get("TELEGRAM_LANGUAGE") or "en"
         timezone, _ = _text(env, "TZ")
         timezone = timezone or "UTC"
+        presets_raw, _ = _text(env, "DSM_DESTINATION_PRESETS")
+        presets = tuple(dict.fromkeys(
+            item.strip().strip("/")
+            for item in (presets_raw or "TVShows,Movies,Download").split(",")
+            if item.strip().strip("/")
+        ))
+        if not presets or any(
+            len(item) > 512 or any(ord(char) < 32 for char in item)
+            for item in presets
+        ):
+            raise ConfigurationError("DSM_DESTINATION_PRESETS contains an invalid path")
         if not language or any(c.isspace() for c in language):
             raise ConfigurationError("TELEGRAM_LANGUAGE must be a non-empty language identifier")
         if any(c.isspace() for c in timezone):
@@ -224,6 +236,7 @@ class Settings:
             dsm_password=password,
             dsm_totp_secret=totp,
             telegram_dsm_password_user_id=password_user,
+            dsm_destination_presets=presets,
             deprecated_settings=tuple(dict.fromkeys(deprecated)),
         )
         for legacy in settings.deprecated_settings:

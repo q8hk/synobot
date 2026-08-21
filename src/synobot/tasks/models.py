@@ -25,6 +25,7 @@ class Task:
     updated_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     removed_at: Optional[datetime] = None
+    destination: Optional[str] = None
 
 
 @dataclass(frozen=True)
