@@ -22,8 +22,10 @@ Runtime configuration is deliberately host-local:
 - The Docker volume `synobot-data` contains the SQLite database and the preserved
   legacy `taskdata.json`.
 
-None of the host-local files should be committed. Restrict `.env` to mode `0600`, the
-`secrets` directory to `0700`, and individual secret files to `0600`.
+None of the host-local files should be committed. Restrict `.env` to mode `0600` and
+the `secrets` directory to `0710`. Keep secret files owned by the deploy user, set
+their group to the container GID (`10001`), and use mode `0640`; this lets the
+non-root container read them without making them world-readable.
 
 ## Manual deployment
 
