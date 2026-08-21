@@ -34,6 +34,8 @@ from LogManager import log
 
 class SynoDownloadStation(single.SingletonInstane):
 
+    REQUEST_TIMEOUT = 30
+
     auth_cookie = None
     theTaskMgr = taskmgr.TaskMgr().instance()
     dsm_id = ''
@@ -136,7 +138,7 @@ class SynoDownloadStation(single.SingletonInstane):
         log.info('Request url : %s', url)
 
         try:
-            res = requests.get(url, params=params, verify=self.cfg.IsUseCert(), timeout=30)
+            res = requests.get(url, params=params, verify=self.cfg.IsUseCert(), timeout=self.REQUEST_TIMEOUT)
         except requests.ConnectionError:
             log.error('Login|synology rest api request Connection Error')
             return False, 'Connection error'
@@ -163,7 +165,7 @@ class SynoDownloadStation(single.SingletonInstane):
         url = self.cfg.GetDSDownloadUrl() + '/webapi/DownloadStation/task.cgi'
 
         try:
-            res = requests.get(url, params=params, cookies=self.auth_cookie, verify=self.cfg.IsUseCert())
+            res = requests.get(url, params=params, cookies=self.auth_cookie, verify=self.cfg.IsUseCert(), timeout=self.REQUEST_TIMEOUT)
         except requests.ConnectionError:
             log.error('GetTaskList|synology rest api request Connection Error')
             return False
@@ -222,7 +224,7 @@ class SynoDownloadStation(single.SingletonInstane):
         url = self.cfg.GetDSDownloadUrl() + '/webapi/DownloadStation/task.cgi'
 
         try:
-            res = requests.get(url, params=params, cookies=self.auth_cookie, verify=self.cfg.IsUseCert())
+            res = requests.get(url, params=params, cookies=self.auth_cookie, verify=self.cfg.IsUseCert(), timeout=self.REQUEST_TIMEOUT)
         except requests.ConnectionError:
             log.error('GetTaskList|synology rest api request Connection Error')
             return False
@@ -272,17 +274,17 @@ class SynoDownloadStation(single.SingletonInstane):
 
             if tor_size <= 0:
                 self.SendTaskList(tor_id, tor_size, tor_status, tor_title, tor_size_download, tor_size_upload, tor_speed_down, tor_speed_up)
-                return True
+                continue
             
             # additional 아이템이 없다면 0 정보 전송
             if 'additional' in item == False:
                 self.SendTaskList(tor_id, tor_size, tor_status, tor_title, tor_size_download, tor_size_upload, tor_speed_down, tor_speed_up)
-                return True
+                continue
 
             # transfer 아이템이 없다면 0 정보 전송
             if 'transfer' in item['additional'] == False:
                 self.SendTaskList(tor_id, tor_size, tor_status, tor_title, tor_size_download, tor_size_upload, tor_speed_down, tor_speed_up)
-                return True
+                continue
 
             transfer_item = item['additional']['transfer']
             tor_size_download = transfer_item['size_downloaded']
@@ -309,7 +311,7 @@ class SynoDownloadStation(single.SingletonInstane):
         url = self.cfg.GetDSDownloadUrl() + '/webapi/DownloadStation/statistic.cgi'
 
         try:
-            res = requests.get(url, params=params, cookies=self.auth_cookie, verify=self.cfg.IsUseCert())
+            res = requests.get(url, params=params, cookies=self.auth_cookie, verify=self.cfg.IsUseCert(), timeout=self.REQUEST_TIMEOUT)
         except requests.ConnectionError:
             log.error('GetStatistic|synology rest api request Connection Error')
             return False
@@ -364,11 +366,12 @@ class SynoDownloadStation(single.SingletonInstane):
 
         params2 = {'api' : 'SYNO.DownloadStation.Task', 'version' : '3', 'method' : 'create' }
 
-        files = {'file' : open(file_path, 'rb')}
-
         try:
-            log.info("url:%s, data:%s, files:%s, cookies:%s", create_url, params2, files, self.auth_cookie)
-            res = requests.post(create_url, data=params2, files=files, cookies=self.auth_cookie, verify=self.cfg.IsUseCert())
+            with open(file_path, 'rb') as torrent_file:
+                files = {'file' : torrent_file}
+                log.info("url:%s, data:%s, file:%s", create_url, params2, file_path)
+                res = requests.post(create_url, data=params2, files=files, cookies=self.auth_cookie,
+                                    verify=self.cfg.IsUseCert(), timeout=self.REQUEST_TIMEOUT)
         except requests.ConnectionError:
             log.error('CreateTaskForFile|synology rest api request Connection Error')
             return False
@@ -386,7 +389,6 @@ class SynoDownloadStation(single.SingletonInstane):
             return False
 
         # Remove Torrent File
-        files['file'].close()
         os.remove(file_path)
         log.info('Torrent File removed, file:%s', file_path)
 
@@ -433,7 +435,8 @@ class SynoDownloadStation(single.SingletonInstane):
         params = {'api' : 'SYNO.DownloadStation.Task', 'version' : '3', 'method' : 'create' , 'uri' : url}
 
         try:
-            res = requests.get(create_url, params=params, cookies=self.auth_cookie, verify=self.cfg.IsUseCert())
+            res = requests.post(create_url, data=params, cookies=self.auth_cookie,
+                                verify=self.cfg.IsUseCert(), timeout=self.REQUEST_TIMEOUT)
         except requests.ConnectionError:
             log.error('CreateTaskForUrl|synology rest api request Connection Error')
             return False
@@ -458,7 +461,8 @@ class SynoDownloadStation(single.SingletonInstane):
         params = {'api' : 'SYNO.DownloadStation.Task', 'version' : '3', 'method' : 'delete' , 'id' : task_id}
 
         try:
-            res = requests.get(delete_url, params=params, cookies=self.auth_cookie, verify=self.cfg.IsUseCert())
+            res = requests.post(delete_url, data=params, cookies=self.auth_cookie,
+                                verify=self.cfg.IsUseCert(), timeout=self.REQUEST_TIMEOUT)
         except requests.ConnectionError:
             log.error('DeleteTask|synology rest api request Connection Error')
             return False
@@ -546,7 +550,7 @@ class SynoDownloadStation(single.SingletonInstane):
         
 
         try:
-            log.info("url:%s, data:%s, files:%s, cookies:%s", create_url, params2, file_path, self.auth_cookie)
+            log.info("CreateTaskForFile request, url:%s", create_url)
             res = requests.post(create_url, data=params2, files=torrent_file, cookies=self.auth_cookie, verify=self.cfg.IsUseCert())
         except requests.ConnectionError:
             log.error('CreateTaskForFile|synology rest api request Connection Error')

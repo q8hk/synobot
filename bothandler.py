@@ -3,6 +3,8 @@
 import sys
 import time
 import json
+import os
+import tempfile
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 from telegram.error import (TelegramError, Unauthorized, BadRequest, TimedOut, ChatMigrated, NetworkError)
 
@@ -60,8 +62,11 @@ class BotHandler(single.SingletonInstane):
 
         self.otp_handler.InitOtp(self.cfg.GetOtpSecret())
 
-        log.info("Bot Token : %s", self.cfg.GetBotToken())
-        updater = Updater(self.cfg.GetBotToken(), use_context=True)
+        bot_token = self.cfg.GetBotToken()
+        if not bot_token:
+            raise ValueError('TG_BOT_TOKEN must be configured')
+        log.info("Telegram bot initialization started")
+        updater = Updater(bot_token, use_context=True)
 
         self.BotUpdater = updater
         self.bot = updater.bot
@@ -101,12 +106,20 @@ class BotHandler(single.SingletonInstane):
         # Run the bot until you press Ctrl-C or the process receives SIGINT,
         # SIGTERM or SIGABRT. This should be used most of the time, since
         # start_polling() is non-blocking and will stop the bot gracefully.
-        updater.idle()
-
-        self.dsdown_task_monitor.cancel()
+        try:
+            updater.idle()
+        finally:
+            self.StopTaskMonitor()
 
     def StopTaskMonitor(self):
-        self.dsdown_task_monitor.cancel()
+        if self.dsdown_task_monitor is not None:
+            self.dsdown_task_monitor.cancel()
+
+    def Shutdown(self):
+        """Stop background work and Telegram polling during process shutdown."""
+        self.StopTaskMonitor()
+        if self.BotUpdater is not None:
+            self.BotUpdater.stop()
 
     def CheckValidUser(self, chat_id):
         if not chat_id in self.valid_users:
@@ -181,7 +194,7 @@ class BotHandler(single.SingletonInstane):
             if self.otp_code == None or len(self.otp_code) == 0:
                 log.info('none otp')
                 l_otp_code = self.otp_handler.GetOtp()
-                log.info('GetOtp : [%s]', l_otp_code)
+                log.info('OTP code generated for DSM login')
             else:
                 log.info('exist otp')
                 l_otp_code = self.otp_code
@@ -207,7 +220,7 @@ class BotHandler(single.SingletonInstane):
             if content.status_code != 200:
                 log.warn("DSM Login Request fail")
                 # msg = '로그인 요청 실패\n, 응답 코드 : %d' % (res.status_code)
-                msg = self.lang.GetBotHandlerLang('dsm_login_api_fail') % (res.status_code)
+                msg = self.lang.GetBotHandlerLang('dsm_login_api_fail') % (content.status_code)
 
                 msg += retry_msg
                 self.try_login_cnt += 1
@@ -258,7 +271,7 @@ class BotHandler(single.SingletonInstane):
                 elif errcode == 402 or errcode == 403 or errcode == 404:
                     log.info('%d error, permission denied, try otp auth login', errcode)
                     if self.otp_handler.GetOtp() != '':
-                        log.info('otp handler instance exist, retry login. [%d/%d]', iself.try_login_cnt+1, retry_cnt)
+                        log.info('otp handler instance exist, retry login. [%d/%d]', self.try_login_cnt+1, retry_cnt)
                         self.try_login_cnt += 1
                         continue
 
@@ -374,6 +387,7 @@ class BotHandler(single.SingletonInstane):
         command = update.message.text
 
         if self.cur_mode == 'input_id':
+            self.cfg.SetDsmId(command)
             self.ds.dsm_id = command
             self.cur_mode = 'input_pw'
             #update.message.reply_text('로그인 비밀번호를 입력하세요')
@@ -445,19 +459,22 @@ class BotHandler(single.SingletonInstane):
             return
 
         # 1. Get File Name
-        file_name = update.message.document.file_name
+        file_name = update.message.document.file_name or 'upload.torrent'
         file_mime = update.message.document.mime_type
-        file_path = file_name
 
         # 2. .torrent 파일인지 확인
         if( file_mime == 'application/x-bittorrent'):
-            tor_file = update.message.document.get_file(timeout=5)
-            tor_file.download(custom_path=file_path, timeout=5)
-            
-            #ret = self.ds.CreateTaskForFile(file_path)
-            ret = self.ds.CreateTaskForFileToWatchDir(file_path)
+            # Never trust Telegram's filename as a local path. The original name
+            # is display-only; a generated private path is used for processing.
+            with tempfile.TemporaryDirectory(prefix='synobot-upload-') as upload_dir:
+                file_path = os.path.join(upload_dir, 'upload.torrent')
+                tor_file = update.message.document.get_file(timeout=5)
+                tor_file.download(custom_path=file_path, timeout=5)
 
-            log.info("File Received, file name : %s", file_path)
+                # ret = self.ds.CreateTaskForFile(file_path)
+                ret = self.ds.CreateTaskForFileToWatchDir(file_path)
+
+                log.info("Torrent file received and processed")
             
             bot = self.BotUpdater.bot
             #msg = 'Torrent 파일(%s)을 등록 하였습니다' % (file_name)

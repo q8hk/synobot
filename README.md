@@ -111,7 +111,7 @@ When installing Synobot via Docker, you need to set the following environment va
   - **TG_NOTY_ID** *12345678,87654321*
 
 - Enter your Telegram bot token.
-  - **TG_BOT_TOKEN** *186547547:AAEXOA9ld1tlsJXvEVBt4MZYq3bHA1EsJow*
+  - **TG_BOT_TOKEN** *your_telegram_bot_token*
 
 - Specify the chat IDs of users allowed to use Telegram bot commands (use a comma to separate multiple IDs with no spaces).
   - **TG_VALID_USER** *12345678,87654321*
@@ -134,8 +134,12 @@ When installing Synobot via Docker, you need to set the following environment va
 - Specify the Synobot language pack (currently only supports ko_kr).
   - **SYNO_LANG** *ko_kr*
 
-- Configure the DSM_CERT environment variable (use 0 when using a certificate with an HTTPS connection).
-  - **DSM_CERT** *1*
+- Configure TLS certificate verification with **DSM_TLS_VERIFY**. Verification is
+  enabled by default; disabling it weakens connection security and should only be
+  used for a trusted NAS network while certificate configuration is corrected.
+  - **DSM_TLS_VERIFY** *true*
+- **DSM_CERT** remains supported for compatibility: `1` verifies certificates and
+  `0` disables verification.
 
 - Enter the value of the secret key for 2-step authentication when configuring DSM 2-step authentication.
   - **DSM_OTP_SECRET** *VFGW*
@@ -241,4 +245,3 @@ To configure the OTP automatic input feature introduced in version 0.13, follow 
 For inquiries, please use the synobot GitHub repository:
 
 <a href="https://github.com/acidpop/synobot_public" target="_blank">synobot GitHub</a>
-

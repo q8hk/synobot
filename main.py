@@ -26,9 +26,9 @@ def signal_handler(sig, frame):
 
 def signal_term_handler(sig, frame):
     log.info('recv signal : %s[%d]', SIGNALS_TO_NAMES_DICT[sig], sig)
-    log.info('SIGTERM signal ignore')
+    log.info('stopping Synobot gracefully')
     taskmgr.TaskMgr().instance().SaveTask()
-    #botConfig.SetLoop(False)
+    bothandler.BotHandler().instance().Shutdown()
 
 def exception_hook(exc_type, exc_value, exc_traceback):
     log.error(
@@ -53,7 +53,11 @@ def main():
     
     bot = bothandler.BotHandler().instance()
 
-    bot.InitBot()
+    try:
+        bot.InitBot()
+    finally:
+        bot.StopTaskMonitor()
+        taskmgr.TaskMgr().instance().SaveTask()
 
     log.info("Bot Exit")
 

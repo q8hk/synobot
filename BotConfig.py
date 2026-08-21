@@ -5,6 +5,40 @@ import os
 import socket
 import single
 
+
+def _parse_id_list(value, setting_name, allow_negative=False):
+    """Parse a comma-separated Telegram ID list without executing input."""
+    if value is None:
+        raise ValueError('%s must be configured' % setting_name)
+
+    ids = []
+    for item in str(value).split(','):
+        item = item.strip()
+        if not item:
+            continue
+        numeric_item = item[1:] if allow_negative and item.startswith('-') else item
+        if not numeric_item.isdecimal():
+            raise ValueError('%s must contain only comma-separated numeric IDs' % setting_name)
+        parsed_id = int(item)
+        if parsed_id == 0 or (parsed_id < 0 and not allow_negative):
+            qualifier = 'non-zero' if allow_negative else 'positive'
+            raise ValueError('%s must contain %s numeric IDs' % (setting_name, qualifier))
+        if parsed_id not in ids:
+            ids.append(parsed_id)
+
+    if not ids:
+        raise ValueError('%s must contain at least one numeric ID' % setting_name)
+    return tuple(ids)
+
+
+def _parse_bool(value, setting_name):
+    normalized = str(value).strip().lower()
+    if normalized in ('1', 'true', 'yes', 'on'):
+        return True
+    if normalized in ('0', 'false', 'no', 'off'):
+        return False
+    raise ValueError('%s must be one of: 1, 0, true, false, yes, no, on, off' % setting_name)
+
 class BotConfig(single.SingletonInstane):
     
     # 알림을 받을 Telegram 사용자의 Chat ID리스트 (, 기호로 구분)
@@ -49,19 +83,16 @@ class BotConfig(single.SingletonInstane):
 
     def __init__(self, *args, **kwargs):
 
-        temp_notify_list = os.environ.get('TG_NOTY_ID', '12345678')
-        if temp_notify_list.find(',') == -1:
-            temp_notify_list += ', '
-        self.notify_chat_id_list = eval(temp_notify_list)
+        self.notify_chat_id_list = _parse_id_list(
+            os.environ.get('TG_NOTY_ID', '12345678'), 'TG_NOTY_ID', allow_negative=True)
 
-        self.dsm_pw_chat_id = os.environ.get('TG_DSM_PW_ID', '12345678')
+        self.dsm_pw_chat_id = _parse_id_list(
+            os.environ.get('TG_DSM_PW_ID', '12345678'), 'TG_DSM_PW_ID')[0]
 
         self.dsm_id = os.environ.get('DSM_ID', '')
-        self.bot_token = os.environ.get('TG_BOT_TOKEN', '186547547:AAEXOA9ld1tlsJXvEVBt4MZYq3bHA1EsJow')
-        temp_valid_user = str(os.environ.get('TG_VALID_USER', '12345678,87654321'))
-        if temp_valid_user.find(',') == -1:
-            temp_valid_user += ', '
-        self.valid_user_list = eval(temp_valid_user)
+        self.bot_token = os.environ.get('TG_BOT_TOKEN', '')
+        self.valid_user_list = _parse_id_list(
+            os.environ.get('TG_VALID_USER', '12345678,87654321'), 'TG_VALID_USER')
         
         self.log_size = int( os.environ.get('LOG_MAX_SIZE', '50') )
         self.log_count = int( os.environ.get('LOG_COUNT', '5') )
@@ -69,10 +100,12 @@ class BotConfig(single.SingletonInstane):
         self.dsm_url = os.environ.get('DSM_URL', 'https://DSM_IP_OR_URL')
         self.ds_download_port = os.environ.get('DS_PORT', '8000')
 
-        # Https SSL 인증서 불일치 무시 여부
-        temp_val = os.environ.get('DSM_CERT', '1')
-        if temp_val == '0':
-            self.dsm_cert = False
+        # Prefer the explicit DSM_TLS_VERIFY name. DSM_CERT remains compatible:
+        # 1 verifies certificates and 0 disables verification.
+        if 'DSM_TLS_VERIFY' in os.environ:
+            self.dsm_cert = _parse_bool(os.environ['DSM_TLS_VERIFY'], 'DSM_TLS_VERIFY')
+        else:
+            self.dsm_cert = _parse_bool(os.environ.get('DSM_CERT', '1'), 'DSM_CERT')
 
         self.dsm_retry_login = os.environ.get('DSM_RETRY_LOGIN', 10)
 
@@ -131,6 +164,9 @@ class BotConfig(single.SingletonInstane):
 
     def GetDsmPW(self):
         return self.dsm_pw
+
+    def SetDsmId(self, dsm_id):
+        self.dsm_id = dsm_id
 
     def SetDsmPW(self, pw):
         self.dsm_pw = pw
