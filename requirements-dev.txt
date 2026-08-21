@@ -1,4 +1,6 @@
 coverage==7.6.12
 pytest==8.3.5
+pytest-asyncio==0.25.3
 pyotp==2.9.0
+python-telegram-bot==22.8
 requests==2.32.3

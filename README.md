@@ -259,8 +259,8 @@ PYTHONPATH=src:. python -m coverage run -m pytest -q
 python -m coverage report
 ```
 
-The modern core lives under `src/synobot` and separates validated settings,
-authorization, Synology HTTP access, and SQLite task persistence. Existing
-environment names remain accepted with deprecation warnings during migration;
-the legacy Telegram runtime remains available until the asynchronous adapter is
-introduced in the next phase.
+The modern runtime lives under `src/synobot` and separates validated settings,
+authorization, Synology HTTP access, SQLite task persistence, asynchronous
+Telegram handlers, and supervised monitoring. Existing environment names remain
+accepted with deprecation warnings during migration. Run it with
+`python -m synobot` after configuring the required environment variables.
