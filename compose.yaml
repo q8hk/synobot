@@ -1,6 +1,6 @@
 services:
   synobot:
-    image: ghcr.io/q8hk/synobot:${SYNOBOT_VERSION:-1.1.0}
+    image: ${REGISTRY:-registry.abdullahserver.local}/${IMAGE_NAME:-synobot}:${TAG:-latest}
     build:
       context: .
       args:
@@ -34,6 +34,12 @@ services:
     tmpfs:
       - /tmp/uploads:rw,noexec,nosuid,nodev,uid=10001,gid=10001,mode=0700,size=64m
     stop_grace_period: 30s
+    pull_policy: always
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 secrets:
   telegram_bot_token:
