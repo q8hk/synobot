@@ -9,6 +9,11 @@ on the Pi, pushes it to `registry.abdullahserver.local`, recreates the Compose
 service, and waits for the container health check. Deployments are serialized with
 `flock`, and logs are retained under `logs/`.
 
+For a one-time migration, place the legacy `taskdata.json` in the repository root.
+The deploy script copies it into the persistent volume before startup and renames
+the host copy to `taskdata.json.imported`. The application then performs its
+idempotent JSON-to-SQLite migration.
+
 Runtime configuration is deliberately host-local:
 
 - `.env` contains non-secret settings and registry coordinates.

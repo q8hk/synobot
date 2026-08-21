@@ -71,6 +71,16 @@ main() {
   log "Pushing $image"
   docker push "$image"
 
+  if [[ -f "$REPO_DIR/taskdata.json" ]]; then
+    log "Importing preserved legacy task state into the persistent volume"
+    docker compose -f compose.yaml create synobot
+    local migration_container
+    migration_container="$(docker compose -f compose.yaml ps -aq synobot)"
+    [[ -n "$migration_container" ]] || die "Could not create migration container"
+    docker cp "$REPO_DIR/taskdata.json" "$migration_container:/data/taskdata.json"
+    mv "$REPO_DIR/taskdata.json" "$REPO_DIR/taskdata.json.imported"
+  fi
+
   log "Updating Synobot"
   docker compose -f compose.yaml pull
   docker compose -f compose.yaml up -d --pull=always --force-recreate
