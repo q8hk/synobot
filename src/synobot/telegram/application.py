@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 from typing import Any, Optional
 
+from telegram import BotCommand
 from telegram.ext import (
     Application,
     ApplicationBuilder,
@@ -16,6 +17,22 @@ from telegram.ext import (
 
 from ..app import ApplicationComponents
 from ..config import Settings
+
+
+COMMAND_MENU = (
+    ("start", "Start Synobot and check readiness"),
+    ("help", "Show the command guide"),
+    ("health", "Check Synobot and DSM connectivity"),
+    ("tasks", "View and manage active downloads"),
+    ("stats", "Show current download and upload speeds"),
+    ("add", "Add a URL or magnet download"),
+    ("history", "Show recent download activity"),
+    ("destination", "View or set the download folder"),
+    ("destinations", "Show recently used folders"),
+    ("notifications", "Manage download notifications"),
+    ("language", "Switch between English and Arabic"),
+    ("dslogin", "Reconnect Synobot to DSM"),
+)
 
 
 async def _invoke(target: Any, method: str) -> None:
@@ -47,6 +64,9 @@ def build_application(
     async def post_init(application: Application) -> None:
         if application.bot_data.get("synobot_started"):
             return
+        await application.bot.set_my_commands(
+            [BotCommand(command, description) for command, description in COMMAND_MENU]
+        )
         application.bot_data["synobot_started"] = True
         if monitor is not None:
             await _invoke(monitor, "start")
@@ -107,4 +127,4 @@ def build_application(
 build_telegram_application = build_application
 
 
-__all__ = ["build_application", "build_telegram_application"]
+__all__ = ["COMMAND_MENU", "build_application", "build_telegram_application"]
