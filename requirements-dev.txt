@@ -1,1 +1,4 @@
 coverage==7.6.12
+pytest==8.3.5
+pyotp==2.9.0
+requests==2.32.3

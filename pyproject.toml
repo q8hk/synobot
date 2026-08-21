@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "synobot"
+version = "0.18.0"
+description = "Telegram control and monitoring for Synology Download Station"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "pyotp>=2.9,<3",
+    "requests>=2.31,<3",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

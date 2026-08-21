@@ -254,6 +254,13 @@ DSM fixtures.
 
 ```bash
 python -m pip install -r requirements-dev.txt
-python -m coverage run -m unittest discover -s tests -v
+python -m pip install -e .
+PYTHONPATH=src:. python -m coverage run -m pytest -q
 python -m coverage report
 ```
+
+The modern core lives under `src/synobot` and separates validated settings,
+authorization, Synology HTTP access, and SQLite task persistence. Existing
+environment names remain accepted with deprecation warnings during migration;
+the legacy Telegram runtime remains available until the asynchronous adapter is
+introduced in the next phase.
