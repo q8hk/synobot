@@ -1,0 +1,28 @@
+name: Deploy On Raspberry Pi
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: synobot-rpi-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, Linux, ARM64, synobot-pi]
+    timeout-minutes: 30
+    steps:
+      - name: Deploy through the local registry
+        shell: bash
+        env:
+          PI_DEPLOY_PATH: /home/q8hk/synobot
+          DEPLOY_SHA: ${{ github.sha }}
+          SYNOBOT_DEPLOY_BRANCH: ${{ github.ref_name }}
+        run: |
+          cd "${PI_DEPLOY_PATH}"
+          bash ./scripts/synobot-deploy.sh "${DEPLOY_SHA}"

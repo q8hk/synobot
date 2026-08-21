@@ -12,7 +12,9 @@ Synobot 1.x uses an asynchronous Telegram adapter, a typed Synology API client, 
 - A dedicated DSM account allowed to use Download Station
 - HTTPS with a trusted certificate or a custom CA certificate strongly recommended
 
-The primary deployment target is `linux/amd64`, including the DS718+. Do not assume support for another CPU architecture until an image for it is published and tested.
+The primary production deployment target is `linux/arm64` on Raspberry Pi. The bot
+continues to connect to Download Station on the Synology NAS over the DSM API; it
+does not need to run on the NAS itself.
 
 ## Commands
 
@@ -150,5 +152,6 @@ The supported entry point is `python -m synobot`. Never use live Telegram or DSM
 
 - Security policy: [SECURITY.md](SECURITY.md)
 - Migration and rollback: [MIGRATION.md](MIGRATION.md)
-- Synology deployment: [docs/DEPLOY_SYNOLOGY.md](docs/DEPLOY_SYNOLOGY.md)
+- Raspberry Pi deployment: [docs/DEPLOY_RPI.md](docs/DEPLOY_RPI.md)
+- Legacy Synology deployment: [docs/DEPLOY_SYNOLOGY.md](docs/DEPLOY_SYNOLOGY.md)
 - Troubleshooting: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)

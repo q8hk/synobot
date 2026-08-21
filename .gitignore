@@ -4,3 +4,8 @@ __pycache__/
 *.log
 .coverage
 taskdata.json
+taskdata.json.imported
+.env
+data/
+logs/
+secrets/
