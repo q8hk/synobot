@@ -1,6 +1,7 @@
 """Telegram delivery of durable task events."""
 
 import inspect
+from datetime import datetime
 from typing import Any, Awaitable, Callable, Iterable, Optional, Tuple
 
 from .tasks.models import TaskEvent
@@ -35,7 +36,7 @@ class TelegramNotificationService:
         self._recipients: Tuple[int, ...] = recipients
         self._send = send
 
-    async def drain(self, limit: int = 100) -> int:
+    async def drain(self, limit: int = 100, *, at: Optional[datetime] = None) -> int:
         """Deliver pending events in order and return acknowledged event count.
 
         Delivery stops on the first failure, preserving that event and all later
@@ -49,6 +50,9 @@ class TelegramNotificationService:
             message = self.format_event(event)
             try:
                 for chat_id in self._recipients:
+                    policy = getattr(self._tasks, "notification_allowed", None)
+                    if policy is not None and not policy(chat_id, at):
+                        continue
                     await self._send(chat_id, message)
             except Exception:
                 break

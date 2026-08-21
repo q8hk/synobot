@@ -46,6 +46,12 @@ class FakeMessageHandler:
         self.callback = callback
 
 
+class FakeCallbackQueryHandler:
+    def __init__(self, callback, pattern=None):
+        self.callback = callback
+        self.pattern = pattern
+
+
 class FakeFilter:
     def __and__(self, other):
         return ("and", self, other)
@@ -59,6 +65,7 @@ def ptb(monkeypatch):
     monkeypatch.setattr(adapter, "ApplicationBuilder", FakeBuilder)
     monkeypatch.setattr(adapter, "CommandHandler", FakeCommandHandler)
     monkeypatch.setattr(adapter, "MessageHandler", FakeMessageHandler)
+    monkeypatch.setattr(adapter, "CallbackQueryHandler", FakeCallbackQueryHandler)
     monkeypatch.setattr(
         adapter,
         "filters",
@@ -73,7 +80,7 @@ def ptb(monkeypatch):
 def fake_handlers():
     names = (
         "start", "help", "health", "tasks", "stats", "dslogin", "add", "text",
-        "document", "error",
+        "document", "task_control", "error",
     )
     return SimpleNamespace(**{name: AsyncMock(name=name) for name in names})
 
@@ -89,7 +96,8 @@ def test_build_registers_routes_and_keeps_components(ptb):
     assert [item.command for item in app.handlers[:9]] == [
         "start", "help", "health", "tasks", "task", "stats", "stat", "dslogin", "add"
     ]
-    assert len(app.handlers) == 11
+    assert len(app.handlers) == 12
+    assert app.handlers[10].pattern == r"^task:"
     assert app.error_handlers == [handlers.error]
     assert app.bot_data["synobot_components"] is components
     assert app.bot_data["synobot_handlers"] is handlers

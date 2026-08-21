@@ -2,6 +2,21 @@
 
 This project follows semantic versioning from Synobot 1.0 onward.
 
+## 1.1.0
+
+### Added
+
+- Inline pause, resume, and confirmed-delete task controls.
+- Durable task history through `/history`.
+- Persisted per-user notification muting and timezone-aware quiet hours.
+- English and Arabic Telegram messages with per-user language selection.
+- Per-user DSM destination selection and a recent-destinations list.
+
+### Changed
+
+- SQLite schema version 2 adds notification preferences and migrates version 1 databases automatically.
+- Task lists now include safe inline controls for operator users.
+
 ## 1.0.0
 
 ### Added

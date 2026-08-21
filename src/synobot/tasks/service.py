@@ -1,8 +1,9 @@
 """Task reconciliation independent of the polling transport."""
 
+from datetime import datetime
 from typing import Iterable, List, Set
 
-from .models import Task, TaskEvent
+from .models import NotificationPreference, Task, TaskEvent
 from .repository import SQLiteTaskRepository
 
 
@@ -31,5 +32,28 @@ class TaskService:
     def pending_notifications(self, limit: int = 100) -> List[TaskEvent]:
         return self.repository.pending_events(limit)
 
+    def history(self, limit: int = 20) -> List[TaskEvent]:
+        return self.repository.recent_events(limit)
+
     def notification_delivered(self, event_id: int) -> bool:
         return self.repository.mark_notification_delivered(event_id)
+
+    def notification_preference(self, user_id: int) -> NotificationPreference:
+        return self.repository.get_notification_preference(user_id)
+
+    def set_notification_preference(
+        self,
+        user_id: int,
+        *,
+        enabled: bool = True,
+        quiet_start: str | None = None,
+        quiet_end: str | None = None,
+        timezone_name: str = "UTC",
+    ) -> NotificationPreference:
+        preference = NotificationPreference(
+            int(user_id), enabled, quiet_start, quiet_end, timezone_name
+        )
+        return self.repository.set_notification_preference(preference)
+
+    def notification_allowed(self, user_id: int, at: datetime | None = None) -> bool:
+        return self.notification_preference(user_id).allows(at)

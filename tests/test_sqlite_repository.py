@@ -15,7 +15,7 @@ def task(task_id="dbid_1", status="downloading", downloaded=0):
 def test_schema_and_context_manager(tmp_path: Path):
     path = tmp_path / "data" / "synobot.db"
     with SQLiteTaskRepository(path) as repository:
-        assert repository.get_metadata("schema_version") == "1"
+        assert repository.get_metadata("schema_version") == "2"
     assert path.exists()
 
 
@@ -120,3 +120,16 @@ def test_list_recent_and_duplicate_poll_validation(tmp_path: Path):
         service.reconcile([task("same"), task("same")])
     with pytest.raises(ValueError):
         repository.recent(-1)
+
+
+def test_history_returns_newest_lifecycle_events(tmp_path: Path):
+    repository = SQLiteTaskRepository(tmp_path / "db.sqlite")
+    service = TaskService(repository)
+    service.reconcile([task("one")])
+    service.reconcile([task("one", status="finished")])
+    events = service.history(limit=1)
+    assert len(events) == 1
+    assert events[0].event_type == "status_changed"
+    assert events[0].new_status == "finished"
+    with pytest.raises(ValueError):
+        service.history(-1)

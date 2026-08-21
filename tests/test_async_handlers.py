@@ -24,13 +24,20 @@ def settings():
     )
 
 
-def update(user_id=1, chat_type="private", text=None, document=None):
+def update(user_id=1, chat_type="private", text=None, document=None, callback_data=None):
     message = SimpleNamespace(text=text, document=document, reply_text=AsyncMock())
-    return SimpleNamespace(
+    item = SimpleNamespace(
         effective_user=SimpleNamespace(id=user_id),
         effective_chat=SimpleNamespace(type=chat_type),
         effective_message=message,
     )
+    if callback_data is not None:
+        item.callback_query = SimpleNamespace(
+            data=callback_data,
+            answer=AsyncMock(),
+            edit_message_reply_markup=AsyncMock(),
+        )
+    return item
 
 
 def adapter(client=None):
@@ -77,6 +84,49 @@ def test_tasks_handles_zero_size_and_all_tasks():
     reply = item.effective_message.reply_text.await_args.args[0]
     assert "Empty — waiting — 0.0%" in reply
     assert "Half — downloading — 50.0%" in reply
+    markup = item.effective_message.reply_text.await_args.kwargs["reply_markup"]
+    assert markup.inline_keyboard[0][0].callback_data == "task:pause:one"
+    assert markup.inline_keyboard[1][0].callback_data == "task:pause:two"
+
+
+def test_operator_can_pause_and_resume_from_callback():
+    handlers, client = adapter()
+    for action in ("pause", "resume"):
+        item = update(user_id=2, callback_data="task:{}:dbid_1".format(action))
+        run(handlers.task_control(item, SimpleNamespace()))
+        item.callback_query.answer.assert_awaited_once()
+        getattr(client, action).assert_called_once_with("dbid_1")
+        item.callback_query.edit_message_reply_markup.assert_awaited_once_with(
+            reply_markup=None
+        )
+        item.effective_message.reply_text.assert_awaited_once_with(
+            "Task {}.".format("paused" if action == "pause" else "resumed")
+        )
+
+
+def test_delete_requires_a_second_confirmed_callback():
+    handlers, client = adapter()
+    prompt = update(user_id=2, callback_data="task:delete:dbid_1")
+    run(handlers.task_control(prompt, SimpleNamespace()))
+    client.delete.assert_not_called()
+    markup = prompt.callback_query.edit_message_reply_markup.await_args.kwargs["reply_markup"]
+    assert markup.inline_keyboard[0][0].callback_data == "task:delete-confirm:dbid_1"
+
+    confirmed = update(user_id=2, callback_data="task:delete-confirm:dbid_1")
+    run(handlers.task_control(confirmed, SimpleNamespace()))
+    client.delete.assert_called_once_with("dbid_1")
+    confirmed.effective_message.reply_text.assert_awaited_once_with("Task deleted.")
+
+
+def test_callback_authorization_precedes_task_mutation():
+    handlers, client = adapter()
+    item = update(user_id=99, callback_data="task:delete-confirm:dbid_1")
+    run(handlers.task_control(item, SimpleNamespace()))
+    item.callback_query.answer.assert_awaited_once()
+    client.delete.assert_not_called()
+    item.effective_message.reply_text.assert_awaited_once_with(
+        "You are not authorized to use this bot."
+    )
 
 
 def test_text_routes_only_magnets_and_youtube():
@@ -142,6 +192,39 @@ def test_dslogin_is_admin_only():
     operator = update(user_id=2)
     run(handlers.dslogin(operator, SimpleNamespace()))
     client.login.assert_not_called()
+
+
+def test_history_reads_durable_events_without_contacting_dsm():
+    handlers, client = adapter()
+    handlers.core.tasks = SimpleNamespace(
+        history=Mock(return_value=[
+            SimpleNamespace(task_id="dbid_1", event_type="status_changed", new_status="finished")
+        ])
+    )
+    item = update(user_id=3)
+    run(handlers.history(item, SimpleNamespace(args=["5"])))
+    handlers.core.tasks.history.assert_called_once_with(5)
+    client.list_tasks.assert_not_called()
+    assert "dbid_1 — status_changed — finished" in item.effective_message.reply_text.await_args.args[0]
+
+
+def test_notifications_command_persists_quiet_hours():
+    handlers, _ = adapter()
+    handlers.core.tasks = SimpleNamespace(set_notification_preference=Mock())
+    item = update(user_id=3)
+    run(handlers.notifications(
+        item, SimpleNamespace(args=["quiet", "22:00", "07:00", "Asia/Kuwait"])
+    ))
+    handlers.core.tasks.set_notification_preference.assert_called_once_with(
+        3,
+        enabled=True,
+        quiet_start="22:00",
+        quiet_end="07:00",
+        timezone_name="Asia/Kuwait",
+    )
+    item.effective_message.reply_text.assert_awaited_once_with(
+        "Notification preferences updated."
+    )
 
 
 def test_error_handler_does_not_log_exception_message(caplog):

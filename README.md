@@ -2,7 +2,7 @@
 
 Synobot is a private Telegram interface for Synology Download Station. It can submit magnet, HTTP/HTTPS/FTP, YouTube, and `.torrent` tasks; list current tasks and transfer rates; notify selected Telegram recipients about durable task events; and recover its DSM session after expiration.
 
-Synobot 1.0 uses an asynchronous Telegram adapter, a typed Synology API client, a supervised task monitor, and a transactional SQLite repository. Blocking DSM and database work runs outside Telegram's event loop. Authorization is checked for every command and submitted item.
+Synobot 1.x uses an asynchronous Telegram adapter, a typed Synology API client, a supervised task monitor, and a transactional SQLite repository. Blocking DSM and database work runs outside Telegram's event loop. Authorization is checked for every command and submitted item.
 
 ## Requirements
 
@@ -21,10 +21,16 @@ The primary deployment target is `linux/amd64`, including the DS718+. Do not ass
 | `/start` | Viewer | Show bot readiness |
 | `/help` | Viewer | Show available commands |
 | `/health` | Viewer | Check the bot and DSM connection |
-| `/tasks` | Viewer | List Download Station tasks and progress |
+| `/tasks` | Viewer | List tasks with pause, resume, and confirmed-delete controls |
+| `/history [limit]` | Viewer | Show durable recent task transitions |
 | `/stats` | Viewer | Show current download and upload rates |
+| `/notifications on\|off\|clear` | Viewer | Enable, mute, or reset personal notifications |
+| `/notifications quiet <start> <end> <timezone>` | Viewer | Set personal quiet hours, for example `22:00 07:00 Asia/Kuwait` |
 | `/dslogin` | Administrator | Refresh the DSM login |
 | `/add <URL>` | Operator | Submit an HTTP, HTTPS, FTP, or magnet URL |
+| `/destination [folder\|clear]` | Operator | Select the DSM destination for new submissions |
+| `/destinations` | Operator | Show the five recently selected destinations |
+| `/language <en\|ar>` | Viewer | Select English or Arabic responses |
 | Magnet or supported YouTube URL | Operator | Submit the URL |
 | `.torrent` document | Operator | Submit a torrent file safely |
 
@@ -43,7 +49,7 @@ Unknown users and group chats are denied by default. The current 1.0 configurati
 ```yaml
 services:
   synobot:
-    image: ghcr.io/q8hk/synobot:1.0.0
+    image: ghcr.io/q8hk/synobot:1.1.0
     container_name: synobot
     restart: unless-stopped
     environment:

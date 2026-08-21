@@ -8,10 +8,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Tuple
 
-from .models import Task, TaskEvent, utc_now
+from .models import NotificationPreference, Task, TaskEvent, utc_now
 
 
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"
 _MIGRATION_KEY = "legacy_taskdata_migrated"
 
 
@@ -78,17 +78,31 @@ class SQLiteTaskRepository:
                 ON task_events(notification_state, id);
             CREATE INDEX IF NOT EXISTS idx_tasks_updated
                 ON tasks(updated_at DESC);
+            CREATE TABLE IF NOT EXISTS notification_preferences (
+                user_id INTEGER PRIMARY KEY,
+                enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0, 1)),
+                quiet_start TEXT,
+                quiet_end TEXT,
+                timezone_name TEXT NOT NULL DEFAULT 'UTC',
+                updated_at TEXT NOT NULL,
+                CHECK((quiet_start IS NULL AND quiet_end IS NULL) OR
+                      (quiet_start IS NOT NULL AND quiet_end IS NOT NULL))
+            );
             """
         )
         row = self._connection.execute(
             "SELECT value FROM app_metadata WHERE key = 'schema_version'"
         ).fetchone()
-        if row is not None and row["value"] != SCHEMA_VERSION:
+        if row is not None and row["value"] not in ("1", SCHEMA_VERSION):
             raise RuntimeError("Unsupported task database schema version: %s" % row["value"])
         self._connection.execute(
             "INSERT OR IGNORE INTO app_metadata(key, value) VALUES('schema_version', ?)",
             (SCHEMA_VERSION,),
         )
+        if row is not None and row["value"] == "1":
+            self._connection.execute(
+                "UPDATE app_metadata SET value=? WHERE key='schema_version'", (SCHEMA_VERSION,)
+            )
         self._connection.commit()
 
     @contextmanager
@@ -204,6 +218,16 @@ class SQLiteTaskRepository:
             ).fetchall()
             return [self._event(row) for row in rows]
 
+    def recent_events(self, limit: int = 20) -> List[TaskEvent]:
+        """Return the newest task lifecycle events for user-facing history."""
+        if limit < 0:
+            raise ValueError("limit must not be negative")
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT * FROM task_events ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
+            return [self._event(row) for row in rows]
+
     def mark_notification_delivered(self, event_id: int,
                                     delivered_at: Optional[datetime] = None) -> bool:
         with self._transaction() as connection:
@@ -213,6 +237,35 @@ class SQLiteTaskRepository:
                 (_iso(delivered_at or utc_now()), event_id),
             )
             return cursor.rowcount == 1
+
+    def get_notification_preference(self, user_id: int) -> NotificationPreference:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT * FROM notification_preferences WHERE user_id=?", (int(user_id),)
+            ).fetchone()
+        if row is None:
+            return NotificationPreference(int(user_id))
+        return NotificationPreference(
+            int(row["user_id"]), bool(row["enabled"]), row["quiet_start"],
+            row["quiet_end"], str(row["timezone_name"]),
+        )
+
+    def set_notification_preference(
+        self, preference: NotificationPreference
+    ) -> NotificationPreference:
+        with self._transaction() as connection:
+            connection.execute(
+                """INSERT INTO notification_preferences(
+                       user_id,enabled,quiet_start,quiet_end,timezone_name,updated_at)
+                   VALUES(?,?,?,?,?,?)
+                   ON CONFLICT(user_id) DO UPDATE SET
+                       enabled=excluded.enabled,quiet_start=excluded.quiet_start,
+                       quiet_end=excluded.quiet_end,timezone_name=excluded.timezone_name,
+                       updated_at=excluded.updated_at""",
+                (preference.user_id, int(preference.enabled), preference.quiet_start,
+                 preference.quiet_end, preference.timezone_name, _iso(utc_now())),
+            )
+        return preference
 
     def migrate_legacy_json(self, legacy_path: Path) -> int:
         """Import a complete legacy file once; the source is never changed."""

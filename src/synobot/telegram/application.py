@@ -5,7 +5,14 @@ from __future__ import annotations
 import inspect
 from typing import Any, Optional
 
-from telegram.ext import Application, ApplicationBuilder, CommandHandler, MessageHandler, filters
+from telegram.ext import (
+    Application,
+    ApplicationBuilder,
+    CallbackQueryHandler,
+    CommandHandler,
+    MessageHandler,
+    filters,
+)
 
 from ..app import ApplicationComponents
 from ..config import Settings
@@ -81,7 +88,14 @@ def build_application(
         ("add", handlers.add),
     ):
         application.add_handler(CommandHandler(command, callback))
+    # Optional lookup keeps lightweight injected handler doubles compatible
+    # while the concrete TelegramHandlers always exposes the Phase 6 commands.
+    for command in ("language", "destination", "destinations", "history", "notifications"):
+        callback = getattr(handlers, command, None)
+        if callback is not None:
+            application.add_handler(CommandHandler(command, callback))
     application.add_handler(MessageHandler(filters.Document.ALL, handlers.document))
+    application.add_handler(CallbackQueryHandler(handlers.task_control, pattern=r"^task:"))
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.text)
     )
