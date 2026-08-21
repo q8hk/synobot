@@ -78,6 +78,8 @@ main() {
     migration_container="$(docker compose -f compose.yaml ps -aq synobot)"
     [[ -n "$migration_container" ]] || die "Could not create migration container"
     docker cp "$REPO_DIR/taskdata.json" "$migration_container:/data/taskdata.json"
+    docker run --rm --user 0:0 --volume synobot_synobot-data:/data "$image" \
+      chown 10001:10001 /data/taskdata.json
     mv "$REPO_DIR/taskdata.json" "$REPO_DIR/taskdata.json.imported"
   fi
 
