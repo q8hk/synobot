@@ -3,7 +3,7 @@
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Awaitable, Callable, Optional
+from typing import Any, Awaitable, Callable, Optional
 
 from .app import SynobotCore
 
@@ -36,6 +36,7 @@ class AsyncTaskMonitor:
         max_backoff: float = 300.0,
         status_callback: Optional[StatusCallback] = None,
         notification_callback: Optional[NotificationCallback] = None,
+        health_store: Optional[Any] = None,
         sleep: Sleep = asyncio.sleep,
     ) -> None:
         if interval <= 0 or max_backoff <= 0:
@@ -45,6 +46,7 @@ class AsyncTaskMonitor:
         self._max_backoff = max(max_backoff, interval)
         self._status_callback = status_callback
         self._notification_callback = notification_callback
+        self._health_store = health_store
         self._sleep = sleep
         self._task: Optional["asyncio.Task[None]"] = None
         self._poll_lock = asyncio.Lock()
@@ -65,6 +67,7 @@ class AsyncTaskMonitor:
     def start(self) -> "asyncio.Task[None]":
         if self._task is None or self._task.done():
             self._task = asyncio.create_task(self._run(), name="synobot-task-monitor")
+            self._write_health()
         return self._task
 
     async def stop(self) -> None:
@@ -76,6 +79,7 @@ class AsyncTaskMonitor:
             await task
         except asyncio.CancelledError:
             pass
+        self._write_health()
 
     async def poll_once(self) -> bool:
         """Perform one non-overlapping poll; return whether it succeeded."""
@@ -91,6 +95,7 @@ class AsyncTaskMonitor:
                 if not self._has_polled or was_connected:
                     await self._announce("DSM connection lost")
                 self._has_polled = True
+                self._write_health()
                 return False
             self._connected = True
             self._last_error = None
@@ -106,7 +111,17 @@ class AsyncTaskMonitor:
             if self._has_polled and not was_connected:
                 await self._announce("DSM connection recovered")
             self._has_polled = True
+            self._write_health()
             return True
+
+    def _write_health(self) -> None:
+        if self._health_store is None:
+            return
+        try:
+            self._health_store.write(self.health)
+        except Exception:
+            # Health persistence must not terminate Telegram or DSM polling.
+            pass
 
     async def _announce(self, message: str) -> None:
         if self._status_callback is None:

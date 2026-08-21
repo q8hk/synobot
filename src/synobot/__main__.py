@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from .app import build_components
 from .config import Settings
+from .healthcheck import HealthStateStore
 from .monitoring import AsyncTaskMonitor
 from .notifications import TelegramNotificationService
 from .telegram.application import build_application
@@ -35,6 +36,7 @@ def main() -> None:
             interval=settings.dsm_poll_interval_seconds,
             status_callback=announce_status,
             notification_callback=notifications.drain,
+            health_store=HealthStateStore(settings.database_path.parent / "health.json"),
         )
         application = build_application(settings, components, monitor=monitor)
         application_holder["application"] = application

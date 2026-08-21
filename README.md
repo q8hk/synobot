@@ -1,266 +1,148 @@
-***
-
-### 0.15 (2023/09/29)
-- Added ability to handle YouTube links.
-- Translated README.md to English.
-
-### 0.14 (2022/06/15)
-- Fixed an issue where an incorrect value was entered for the OTP Secret Key.
-
-### 0.13 (2021/10/05)
-- Added OTP automatic input feature [Setup Guide](#Setting-Up-OTP).
-  
-- Automatically re-login when disconnected (automatically logs in if 2-step authentication is enabled and DSM_OTP_SECRET is configured).
-  
-- Added the ability to send failure messages when DSM connection fails.
-
-### 0.12 (2021/07/10)
-- Fixed OTP login issue in DSM 7.0.
-
-### 0.11 (2020/10/23)
-- Functionality changes for DSM 7.0 or an update to Download Station around October 20, 2020.
-  
-- Changed file upload to the watch_dir when sending files to Telegram.
-  
-- Added DSM_WATCH environment variable for the full path of the Torrent Watch directory [Setup Guide](#Setting-Up-Torrent-Watch-Directory).
-  
-- Modified the notification for "unknown error."
-
-### 0.10 (2020/09/11)
-- Fixed issues with Synobot not working on DSM 7.0.
-  
-- Added the /task command (list of active tasks in Download Station, including ID, name, size, status, downloaded size, upload size, download speed, and upload speed).
-  
-- Added the /stat command (retrieve network speed information in Download Station, including download speed and upload speed).
-
-### 0.9 (2020/06/02)
-- Removed Markdown formatting from Torrent titles in DS Download notifications.
-
-### 0.8 (2020/05/22)
-- Fixed an issue where registering received torrent files failed when using private certificates.
-  
-- Fixed the continuous output of warning logs when using private certificates.
-  
-- Fixed an issue where deleted task lists were retained.
-  
-- Added support for localization using the TG_LANG environment variable (ko_kr, en_us). It defaults to ko_kr if not specified.
-
-### 0.7 (2020/05/19)
-- Added DSM_AUTO_DEL environment variable. Set to 0 by default. Change it to 1 to enable automatic task deletion upon completion.
-  
-- Added Download Station automatic deletion feature.
-
-### 0.6 (2020/05/18)
-- Fixed an issue where Synobot wouldn't start if the DSM_PW environment variable was missing.
-  
-- Added the /dslogin command in Telegram (to attempt re-login).
-  
-- Added support for 2-step authentication (OTP).
-  
-- Completely changed the login code.
-  
-- Added the DSM_CERT environment variable (set to 0 when using a certificate with an HTTPS connection).
-
-### 0.5 (2019/09/03)
-- Removed Markdown formatting from DS Download notifications.
-
-### 0.4 (2019/08/30)
-- Fixed an issue with Torrent titles containing square brackets [].
-  
-- Fixed issues when deleting during download.
-
-### 0.3
-- Prepared for language packs (loading language packs based on SYNO_LANG environment setting).
-  
-- Fixed duplicate messages when canceling downloads.
-
-### 0.2
-- Exception handling for requests.
-
-### 0.1
-- Initial version of Synobot.
-
-***
-
-# Synology DSM Download Station Task Monitor and Task Creation for Magnet and Torrent Files
-
-## **Synobot Features**
-
-Synobot provides the following simple features:
-
-1. Telegram notifications for Download Station tasks.
-   - Notifications are triggered by:
-     - Receiving a task with a size greater than 0.
-     - A change in status (e.g., downloading to completed).
-     - Deletion of tasks from the list.
-
-2. Magnet link support.
-   - Sending magnet links to the Telegram bot will add them to Download Station.
-
-3. Torrent file support.
-   - Sending torrent files to the Telegram bot will add them to Download Station.
-
-4. /dslogin command support.
-   - Sending the /dslogin command to the Telegram bot will attempt to re-login.
-
-## **Environment Variables for Docker Installation**
-
-When installing Synobot via Docker, you need to set the following environment variable values:
-
-- To receive Telegram alerts, specify the chat IDs of users (use a comma to separate multiple IDs with no spaces).
-  - **TG_NOTY_ID** *12345678,87654321*
-
-- Enter your Telegram bot token.
-  - **TG_BOT_TOKEN** *your_telegram_bot_token*
-
-- Specify the chat IDs of users allowed to use Telegram bot commands (use a comma to separate multiple IDs with no spaces).
-  - **TG_VALID_USER** *12345678,87654321*
-
-- Enter the DSM login user ID.
-  - **DSM_ID** *your_dsm_id*
-
-- Specify the chat ID of the Telegram user who will be asked for a password when logging into Download Station.
-  - **TG_DSM_PW_ID** *12345678*
-
-- Enter the DSM URL (include http or https but exclude the port).
-  - **DSM_URL** *https://DSM_IP_OR_URL*
-
-  Example: Correct - https://www.dsm.com
-  Incorrect - https://www.dsm.com:8000
-
-- Enter the port for Download Station (matching http or https based on DSM_URL).
-  - **DS_PORT** *8000*
-
-- Specify the Synobot language pack (currently only supports ko_kr).
-  - **SYNO_LANG** *ko_kr*
-
-- Configure TLS certificate verification with **DSM_TLS_VERIFY**. Verification is
-  enabled by default; disabling it weakens connection security and should only be
-  used for a trusted NAS network while certificate configuration is corrected.
-  - **DSM_TLS_VERIFY** *true*
-- **DSM_CERT** remains supported for compatibility: `1` verifies certificates and
-  `0` disables verification.
-
-- Enter the value of the secret key for 2-step authentication when configuring DSM 2-step authentication.
-  - **DSM_OTP_SECRET** *VFGW*
-
-- Set the timezone for Synobot Docker (use values corresponding to TZ database names).
-  - **TZ** *Asia/Seoul*
-
-- Enable Synobot Docker logs to be viewable on the container details log tab.
-  - **DOCKER_LOG** *1*
-
-***
-
-**Note: If the DSM_PW environment variable is missing, Synobot Docker will request the DSM login password each time it restarts.**
-
-**Synobot does not store user passwords anywhere.**
-
-**Password messages received by the Telegram bot are deleted immediately.**
-
-If you find entering the password each time inconvenient, add your DSM login password to the DSM_PW environment variable using the "+" button in Docker settings.
-
-- **DSM_PW** *your_dsm_password*
-
-***
-
-For Synology Docker, configure the settings as follows:
-
-![synobot_config_1](https://raw.githubusercontent.com/acidpop/synobot_public/master/img/synobot_config1.png)
-
-![synobot_config_2](https://raw.githubusercontent.com/acidpop/synobot_public/master/img/synobot_config2.png)
-
-![synobot_config_3](https://raw.githubusercontent.com/acidpop/synobot_public/master/img/synobot_config3.png)
-
-***
-
-- Tip
-
-To find the chat ID of a Telegram user:
-
-<a href="https://blog.acidpop.kr/216?category=679730" target="_blank">How to Find Your Chat ID</a>
-
-***
-
-Customizing Synobot's Introduction Message:
-
-1. Log in to DSM terminal with root access using the sudo -i command.
-
-2. Find the Container ID of the currently running Synobot using the docker ps -a command.
-
-3. Access the Docker internals using the docker exec -it {Container ID} /bin/bash command.
-
-4. Run apt-get update.
-
-5. Install vim using apt-get install vim.
-
-6. Open the ko_kr.json file with vim and modify the message as needed.
-
-7. Restart the Synobot Docker.
-
-***
-
-## Setting Up Torrent Watch Directory
-
-To set up the DSM_WATCH environment variable introduced in version 0.11, follow these steps:
-
-1. Click the Advanced Settings button.
-
-![synobot_config_4](https://raw.githubusercontent.com/acidpop/synobot/master/img/synobot_config4.png)
-
-2. Select the Volume tab and click the Add Folder button.
-
-![synobot_config_5](https://raw.githubusercontent.com/acidpop/synobot/master/img/synobot_config5.png)
-
-3. Choose the watch directory you configured in Download Station.
-
-![synobot_config_6](https://raw.githubusercontent.com/acidpop/synobot/master/img/synobot_config6.png)
-
-4. Enter **/tor_watch** in the Mount path.
-
-![synobot_config_7](https://raw.githubusercontent.com/acidpop/synobot/master/img/synobot_config7.png)
-
-5. In the Environment Variable Settings tab, set the value of DSM_WATCH to **/tor_watch**.
-
-![synobot_config_8](https://raw.githubusercontent.com/acidpop/synobot/master/img/synobot_config8.png)
-
-## Setting Up OTP (2-Step Authentication)
-
-To configure the OTP automatic input feature introduced in version 0.13, follow these steps:
-
-1. Click on "Add 2-step verification" in your account settings.
-
-2. If you encounter the QR code scan screen, click "Can't scan it."
-
-![synobot_config_9](https://raw.githubusercontent.com/acidpop/synobot/master/img/synobot_config9.png)
-
-3. Make a note of the secret key value.
-
-![synobot_config_10](https://raw.githubusercontent.com/acidpop/synobot/master/img/synobot_config10.png)
-
-4. In your Synobot Docker settings, enter the secret key value in the DSM_OTP_SECRET environment variable.
-
-***
-
-For inquiries, please use the synobot GitHub repository:
-
-<a href="https://github.com/acidpop/synobot_public" target="_blank">synobot GitHub</a>
-
-## Development Tests
-
-The characterization suite runs without contacting Telegram or a Synology NAS.
-External responses are replaced with deterministic test doubles and sanitized
-DSM fixtures.
-
-```bash
-python -m pip install -r requirements-dev.txt
-python -m pip install -e .
-PYTHONPATH=src:. python -m coverage run -m pytest -q
-python -m coverage report
+# Synobot
+
+Synobot is a private Telegram interface for Synology Download Station. It can submit magnet, HTTP/HTTPS/FTP, YouTube, and `.torrent` tasks; list current tasks and transfer rates; notify selected Telegram recipients about durable task events; and recover its DSM session after expiration.
+
+Synobot 1.0 uses an asynchronous Telegram adapter, a typed Synology API client, a supervised task monitor, and a transactional SQLite repository. Blocking DSM and database work runs outside Telegram's event loop. Authorization is checked for every command and submitted item.
+
+## Requirements
+
+- A Synology NAS with Download Station installed and enabled
+- Container Manager (or another Docker/Compose installation)
+- A Telegram bot token from BotFather
+- A dedicated DSM account allowed to use Download Station
+- HTTPS with a trusted certificate or a custom CA certificate strongly recommended
+
+The primary deployment target is `linux/amd64`, including the DS718+. Do not assume support for another CPU architecture until an image for it is published and tested.
+
+## Commands
+
+| Command or input | Required role | Action |
+|---|---:|---|
+| `/start` | Viewer | Show bot readiness |
+| `/help` | Viewer | Show available commands |
+| `/health` | Viewer | Check the bot and DSM connection |
+| `/tasks` | Viewer | List Download Station tasks and progress |
+| `/stats` | Viewer | Show current download and upload rates |
+| `/dslogin` | Administrator | Refresh the DSM login |
+| `/add <URL>` | Operator | Submit an HTTP, HTTPS, FTP, or magnet URL |
+| Magnet or supported YouTube URL | Operator | Submit the URL |
+| `.torrent` document | Operator | Submit a torrent file safely |
+
+Unknown users and group chats are denied by default. The current 1.0 configuration grants configured users administrator access; finer-grained user-role configuration is planned for a later release.
+
+## Quick start with Compose
+
+1. Create a Telegram bot with [BotFather](https://t.me/BotFather) and retain its token securely.
+2. Send the new bot a direct message. Determine your numeric Telegram user ID using a method you trust; this is a user ID, not a username.
+3. Create a dedicated DSM account with access to Download Station only. Do not use a DSM administrator account.
+4. Create local `data`, `secrets`, and optionally `certificates` directories.
+5. Put the Telegram token and DSM password in separate files. Restrict their permissions to the account running Docker.
+6. Copy `.env.example` to `.env` and replace all example values.
+7. Create `compose.yaml`:
+
+```yaml
+services:
+  synobot:
+    image: ghcr.io/q8hk/synobot:1.0.0
+    container_name: synobot
+    restart: unless-stopped
+    environment:
+      TELEGRAM_BOT_TOKEN_FILE: /run/secrets/telegram_bot_token
+      TELEGRAM_ADMIN_USER_IDS: ${TELEGRAM_ADMIN_USER_IDS}
+      TELEGRAM_NOTIFY_USER_IDS: ${TELEGRAM_NOTIFY_USER_IDS}
+      DSM_BASE_URL: ${DSM_BASE_URL}
+      DSM_USERNAME: ${DSM_USERNAME}
+      DSM_PASSWORD_FILE: /run/secrets/dsm_password
+      DSM_TLS_VERIFY: "true"
+      DSM_POLL_INTERVAL_SECONDS: "10"
+      DSM_REQUEST_TIMEOUT_SECONDS: "20"
+      DATABASE_PATH: /data/synobot.db
+      TELEGRAM_LANGUAGE: en
+      TZ: Asia/Kuwait
+    volumes:
+      - ./data:/data
+      - ./secrets:/run/secrets:ro
+      # Mount a private CA only when your DSM certificate requires it.
+      # - ./certificates:/certificates:ro
 ```
 
-The modern runtime lives under `src/synobot` and separates validated settings,
-authorization, Synology HTTP access, SQLite task persistence, asynchronous
-Telegram handlers, and supervised monitoring. Existing environment names remain
-accepted with deprecation warnings during migration. Run it with
-`python -m synobot` after configuring the required environment variables.
+8. Pull and start the pinned release:
+
+```shell
+docker compose pull
+docker compose up -d
+docker compose logs --tail=100 synobot
+```
+
+Use an exact release tag in production. Confirm that the tag exists in the project's published images before deployment. See [the Synology deployment guide](docs/DEPLOY_SYNOLOGY.md) for Container Manager instructions.
+
+## Configuration
+
+Secret settings support a `_FILE` variant. When both are present, `_FILE` takes precedence.
+
+| Setting | Required | Default | Description |
+|---|---:|---:|---|
+| `TELEGRAM_BOT_TOKEN_FILE` or `TELEGRAM_BOT_TOKEN` | Yes | — | Telegram token file or value |
+| `TELEGRAM_ADMIN_USER_IDS` | Yes | — | Comma-separated positive Telegram user IDs |
+| `TELEGRAM_NOTIFY_USER_IDS` | Yes | — | Comma-separated Telegram recipient IDs; negative group IDs are accepted for notifications |
+| `DSM_BASE_URL` | Yes | — | Absolute DSM base URL, including port when non-default |
+| `DSM_USERNAME` | Yes | — | Dedicated DSM service-account username |
+| `DSM_PASSWORD_FILE` or `DSM_PASSWORD` | Runtime | — | DSM password; unattended startup requires one |
+| `DSM_TOTP_SECRET_FILE` or `DSM_TOTP_SECRET` | No | — | Base32 TOTP secret for a DSM account using 2FA |
+| `DSM_TLS_VERIFY` | No | `true` | Verify DSM's TLS certificate |
+| `DSM_REQUEST_TIMEOUT_SECONDS` | No | `20` | Positive HTTP timeout in seconds |
+| `DSM_POLL_INTERVAL_SECONDS` | No | `10` | Positive normal polling interval in seconds |
+| `DATABASE_PATH` | No | `/data/synobot.db` | SQLite database path |
+| `DSM_TORRENT_WATCH_PATH` | No | — | Compatibility path for a mounted Download Station watch folder |
+| `DSM_AUTO_DELETE` | No | `false` | Compatibility toggle retained during migration |
+| `TELEGRAM_LANGUAGE` | No | `en` | Language identifier |
+| `TELEGRAM_DSM_PASSWORD_USER_ID` | No | — | Compatibility setting for interactive password flow |
+| `TZ` | No | `UTC` | TZ database timezone name |
+
+Boolean values accept `true/false`, `1/0`, `yes/no`, and `on/off`. ID lists must contain integers separated by commas. Invalid configuration stops startup with a redacted error.
+
+### TLS
+
+Keep `DSM_TLS_VERIFY=true`. Use a publicly trusted DSM certificate or arrange for the container to trust your private CA. A CA file must be mounted read-only and installed or referenced according to the container release's documented trust mechanism. Never place a DSM password in the URL.
+
+Setting verification to `false` permits interception of DSM credentials and task data. Use it only as a short-lived diagnostic on a trusted network while correcting certificates.
+
+## Data and backups
+
+The SQLite database at `DATABASE_PATH` contains observed tasks, transitions, notification delivery state, and migration markers. It does not store DSM or Telegram credentials.
+
+Stop Synobot before taking a simple filesystem copy of the database:
+
+```shell
+docker compose stop synobot
+cp data/synobot.db data/synobot.db.backup
+docker compose start synobot
+```
+
+On first start, Synobot can import a legacy `taskdata.json` when it is available at the expected application location. Import is idempotent. Preserve the original file until the migration and notifications have been verified. See [MIGRATION.md](MIGRATION.md).
+
+## Updating
+
+1. Read [CHANGELOG.md](CHANGELOG.md) and back up `/data`.
+2. Change the image to a specific newer tag.
+3. Run `docker compose pull && docker compose up -d`.
+4. Inspect startup logs and run `/health` and `/tasks`.
+5. If validation fails, restore the previous tag and database backup as described in [MIGRATION.md](MIGRATION.md).
+
+## Development
+
+```shell
+python -m venv .venv
+. .venv/bin/activate
+pip install -e . -r requirements-dev.txt
+pytest
+```
+
+The supported entry point is `python -m synobot`. Never use live Telegram or DSM credentials in tests.
+
+## Security and support
+
+- Security policy: [SECURITY.md](SECURITY.md)
+- Migration and rollback: [MIGRATION.md](MIGRATION.md)
+- Synology deployment: [docs/DEPLOY_SYNOLOGY.md](docs/DEPLOY_SYNOLOGY.md)
+- Troubleshooting: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)

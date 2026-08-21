@@ -1,5 +1,6 @@
 """Composition tests for the PTB application adapter (no network traffic)."""
 
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -134,6 +135,7 @@ def test_cli_composes_monitor_and_runs_polling(monkeypatch):
     settings = SimpleNamespace(
         dsm_poll_interval_seconds=17.0,
         telegram_notify_user_ids=(123,),
+        database_path=Path("/tmp/synobot-test.db"),
     )
     components = SimpleNamespace(core=object(), tasks=object(), close=Mock())
     application = SimpleNamespace(bot_data={}, run_polling=Mock())

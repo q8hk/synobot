@@ -1,41 +1,54 @@
-# Synobot Docker build
-# docker build -t synobot:0.13 .
+# syntax=docker/dockerfile:1.7
 
-FROM python:3.9.6-buster
-MAINTAINER Acidpop <https://github.com/acidpop>
+FROM python:3.12-slim-bookworm AS builder
 
-WORKDIR /synobot
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
 
-ENV TG_NOTY_ID 12345678,87654321
-# TG_BOT_TOKEN must be supplied when the container is started.
-ENV TG_VALID_USER 12345678,87654321
-ENV TG_DSM_PW_ID 12345678
-ENV DSM_ID your_dsm_id
-#ENV DSM_PW your_dsm_password
-ENV LOG_MAX_SIZE 50
-ENV LOG_COUNT 5
-ENV DSM_URL https://DSM_IP_OR_URL
-ENV DS_PORT 8000
-ENV DSM_TLS_VERIFY true
-ENV DSM_RETRY_LOGIN 10
-ENV DSM_AUTO_DEL 0
-ENV TG_LANG ko_kr
-ENV DSM_WATCH torrent_watch_path
-ENV DSM_PW=""
-ENV DSM_OTP_SECRET=""
-ENV TZ Asia/Seoul
-ENV DOCKER_LOG 1
+WORKDIR /build
+COPY pyproject.toml README.md ./
+COPY src ./src
+RUN python -m pip install --upgrade pip build \
+    && python -m build --wheel --outdir /wheels
 
-RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+FROM python:3.12-slim-bookworm AS runtime
 
-#RUN apt-get python3-dev libffi-dev gcc && pip3 install --upgrade pip 
-RUN apt-get update && apt-get install -y libffi-dev gcc
+ARG APP_UID=10001
+ARG APP_GID=10001
+ARG VERSION=dev
+ARG REVISION=unknown
+ARG CREATED=unknown
 
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+LABEL org.opencontainers.image.title="Synobot" \
+      org.opencontainers.image.description="Telegram control and monitoring for Synology Download Station" \
+      org.opencontainers.image.source="https://github.com/q8hk/synobot" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${REVISION}" \
+      org.opencontainers.image.created="${CREATED}" \
+      org.opencontainers.image.licenses="MIT"
 
-COPY ./*.py ./
-COPY ./*.json ./
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    DATABASE_PATH=/data/synobot.db \
+    TMPDIR=/tmp/uploads
 
-CMD [ "python", "./main.py" ]
+RUN groupadd --gid "${APP_GID}" synobot \
+    && useradd --uid "${APP_UID}" --gid "${APP_GID}" --create-home --home-dir /home/synobot synobot \
+    && install -d -o synobot -g synobot -m 0750 /data /tmp/uploads
+
+COPY --from=builder /wheels /wheels
+RUN python -m pip install /wheels/*.whl \
+    && rm -rf /wheels
+
+USER synobot:synobot
+WORKDIR /data
+VOLUME ["/data"]
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD ["python", "-m", "synobot.healthcheck"]
+
+STOPSIGNAL SIGTERM
+CMD ["python", "-m", "synobot"]
 
