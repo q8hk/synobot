@@ -38,7 +38,10 @@ COMMAND_MENU = (
 async def _invoke(target: Any, method: str) -> None:
     """Invoke a synchronous or asynchronous lifecycle method."""
     result = getattr(target, method)()
-    if inspect.isawaitable(result):
+    # ``AsyncTaskMonitor.start`` intentionally returns its long-running Task as
+    # a handle. Await coroutine lifecycle methods, but never await that
+    # background Task or Telegram polling will never start.
+    if inspect.iscoroutine(result):
         await result
 
 
