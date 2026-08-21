@@ -6,6 +6,7 @@ behind ``asyncio.to_thread`` and makes the handlers straightforward to test.
 """
 
 import asyncio
+import hashlib
 import logging
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -48,11 +49,7 @@ class TelegramHandlers:
         self.core = core
         self.authorization = authorization
         self.settings = settings
-        # Conversation preferences deliberately remain adapter state: no DSM or
-        # repository migration is needed, and a restart safely restores defaults.
         self._languages: dict[int, str] = {}
-        self._destinations: dict[int, str] = {}
-        self._recent_destinations: list[str] = []
 
     @staticmethod
     def _user_id(update: Any) -> Optional[int]:
@@ -70,15 +67,76 @@ class TelegramHandlers:
     def _t(self, update: Any, key: str, **values: Any) -> str:
         return translate(self._language(update), key, **values)
 
-    def _destination(self, update: Any) -> Optional[str]:
+    async def _destination(self, update: Any) -> Optional[str]:
         user_id = self._user_id(update)
-        return self._destinations.get(user_id) if user_id is not None else None
+        if user_id is None:
+            return None
+        return await asyncio.to_thread(self.core.tasks.destination_preference, user_id)
 
-    def _remember_destination(self, destination: str) -> None:
-        if destination in self._recent_destinations:
-            self._recent_destinations.remove(destination)
-        self._recent_destinations.insert(0, destination)
-        del self._recent_destinations[5:]
+    @staticmethod
+    def _canonical_destination(value: Any) -> Optional[str]:
+        destination = str(value or "").strip().strip("/")
+        if destination.lower().endswith("/incomplete"):
+            destination = destination[: -len("/incomplete")].rstrip("/")
+        if (not destination or len(destination) > 512
+                or any(ord(char) < 32 for char in destination)):
+            return None
+        return destination
+
+    @staticmethod
+    def _destination_token(destination: str) -> str:
+        return hashlib.sha256(destination.encode("utf-8")).hexdigest()[:16]
+
+    @staticmethod
+    def _destination_label(destination: str) -> str:
+        lowered = destination.casefold()
+        if "tv" in lowered:
+            return "📺 {}".format(destination)
+        if "movie" in lowered or "film" in lowered:
+            return "🎬 {}".format(destination)
+        if "download" in lowered:
+            return "📥 {}".format(destination)
+        return "📂 {}".format(destination)
+
+    async def _destination_choices(self, update: Any) -> list[str]:
+        user_id = self._user_id(update)
+        if user_id is None:
+            return []
+        observed: list[str] = []
+        try:
+            tasks = await asyncio.to_thread(self.core.client.list_tasks, True)
+            for task in tasks:
+                additional = task.raw.get("additional")
+                additional = additional if isinstance(additional, dict) else {}
+                detail = additional.get("detail")
+                detail = detail if isinstance(detail, dict) else {}
+                candidate = self._canonical_destination(
+                    detail.get("destination") or task.raw.get("destination")
+                )
+                if candidate:
+                    observed.append(candidate)
+        except SynologyError:
+            pass
+        fallbacks = tuple(
+            candidate
+            for value in self.settings.dsm_destination_presets
+            if (candidate := self._canonical_destination(value))
+        )
+        return await asyncio.to_thread(
+            self.core.tasks.rank_destinations, user_id, observed, fallbacks
+        )
+
+    async def _destination_markup(self, update: Any, *, expanded: bool = False):
+        choices = await self._destination_choices(update)
+        visible = choices[:8 if expanded else 3]
+        rows = [[InlineKeyboardButton(
+            self._destination_label(destination),
+            callback_data="dest:set:{}".format(self._destination_token(destination)),
+        )] for destination in visible]
+        rows.append([InlineKeyboardButton("⚙️ Download Station default", callback_data="dest:default")])
+        if not expanded and len(choices) > 3:
+            rows.append([InlineKeyboardButton("📂 More destinations", callback_data="dest:more")])
+        return InlineKeyboardMarkup(rows), choices
 
     async def _authorize(self, update: Any, minimum: Role = Role.VIEWER) -> bool:
         user = getattr(update, "effective_user", None)
@@ -130,39 +188,92 @@ class TelegramHandlers:
         if not await self._authorize(update, Role.OPERATOR):
             return
         args = getattr(context, "args", None) or []
-        current = self._destination(update)
         if not args:
+            current = await self._destination(update)
             key = "destination_current" if current else "destination_default"
             values = {"destination": current} if current else {}
-            await self._reply(update, self._t(update, key, **values))
+            markup, _ = await self._destination_markup(update)
+            message = getattr(update, "effective_message", None)
+            if message is not None:
+                await message.reply_text(
+                    self._t(update, key, **values) + "\n\n" + self._t(update, "destination_choose"),
+                    reply_markup=markup,
+                )
             return
-        if len(args) != 1:
-            await self._reply(update, self._t(update, "destination_usage"))
-            return
-        candidate = str(args[0]).strip()
+        candidate = " ".join(str(value) for value in args).strip()
         user_id = self._user_id(update)
         if candidate.lower() in ("clear", "default", "-"):
             if user_id is not None:
-                self._destinations.pop(user_id, None)
+                await asyncio.to_thread(
+                    self.core.tasks.set_destination_preference, user_id, None
+                )
             await self._reply(update, self._t(update, "destination_cleared"))
             return
-        if not candidate or len(candidate) > 512 or any(ord(char) < 32 for char in candidate):
+        candidate = self._canonical_destination(candidate)
+        if candidate is None:
             await self._reply(update, self._t(update, "destination_invalid"))
             return
         if user_id is not None:
-            self._destinations[user_id] = candidate
-        self._remember_destination(candidate)
+            await asyncio.to_thread(
+                self.core.tasks.set_destination_preference, user_id, candidate
+            )
         await self._reply(update, self._t(update, "destination_set", destination=candidate))
 
     async def destinations(self, update: Any, context: Any) -> None:
         del context
         if not await self._authorize(update, Role.OPERATOR):
             return
-        if not self._recent_destinations:
+        markup, choices = await self._destination_markup(update, expanded=True)
+        if not choices:
             await self._reply(update, self._t(update, "destinations_none"))
             return
-        lines = "\n".join("{}. {}".format(index, value) for index, value in enumerate(self._recent_destinations, 1))
-        await self._reply(update, self._t(update, "destinations_recent", destinations=lines))
+        message = getattr(update, "effective_message", None)
+        if message is not None:
+            await message.reply_text(self._t(update, "destination_choose"), reply_markup=markup)
+
+    async def destination_control(self, update: Any, context: Any) -> None:
+        """Apply a validated destination selected from an inline keyboard."""
+        del context
+        query = getattr(update, "callback_query", None)
+        if query is None:
+            return
+        await query.answer()
+        if not await self._authorize(update, Role.OPERATOR):
+            return
+        data = str(getattr(query, "data", "") or "")
+        user_id = self._user_id(update)
+        if user_id is None:
+            return
+        if data == "dest:default":
+            await asyncio.to_thread(
+                self.core.tasks.set_destination_preference, user_id, None
+            )
+            await query.edit_message_reply_markup(reply_markup=None)
+            await self._reply(update, self._t(update, "destination_cleared"))
+            return
+        if data == "dest:more":
+            markup, _ = await self._destination_markup(update, expanded=True)
+            await query.edit_message_reply_markup(reply_markup=markup)
+            return
+        if not data.startswith("dest:set:"):
+            await self._reply(update, self._t(update, "destination_expired"))
+            return
+        token = data.removeprefix("dest:set:")
+        choices = await self._destination_choices(update)
+        destination = next(
+            (item for item in choices if self._destination_token(item) == token), None
+        )
+        if destination is None:
+            await query.edit_message_reply_markup(reply_markup=None)
+            await self._reply(update, self._t(update, "destination_expired"))
+            return
+        await asyncio.to_thread(
+            self.core.tasks.set_destination_preference, user_id, destination
+        )
+        await query.edit_message_reply_markup(reply_markup=None)
+        await self._reply(
+            update, self._t(update, "destination_set", destination=destination)
+        )
 
     async def health(self, update: Any, context: Any) -> None:
         del context
@@ -383,15 +494,19 @@ class TelegramHandlers:
             with TemporaryDirectory(prefix="synobot-") as directory:
                 target = Path(directory) / "upload.torrent"
                 await telegram_file.download_to_drive(custom_path=target)
-                destination = self._destination(update)
+                destination = await self._destination(update)
                 if destination:
                     await asyncio.to_thread(self.core.client.create_file, target, destination)
-                    self._remember_destination(destination)
                 else:
                     await asyncio.to_thread(self.core.client.create_file, target)
         except (SynologyError, OSError):
             await self._reply(update, "Could not submit the torrent to Download Station.")
             return
+        user_id = self._user_id(update)
+        if destination and user_id is not None:
+            await asyncio.to_thread(
+                self.core.tasks.record_destination_use, user_id, destination
+            )
         if destination:
             response = self._t(update, "torrent_submitted", destination=destination)
         else:
@@ -421,16 +536,20 @@ class TelegramHandlers:
                 LOGGER.warning("Unable to deliver Telegram error response")
 
     async def _create_url(self, update: Any, value: str) -> None:
-        destination = self._destination(update)
+        destination = await self._destination(update)
         try:
             if destination:
                 await asyncio.to_thread(self.core.client.create_url, value, destination)
-                self._remember_destination(destination)
             else:
                 await asyncio.to_thread(self.core.client.create_url, value)
         except (SynologyError, ValueError):
             await self._reply(update, "Download Station rejected the URL.")
             return
+        user_id = self._user_id(update)
+        if destination and user_id is not None:
+            await asyncio.to_thread(
+                self.core.tasks.record_destination_use, user_id, destination
+            )
         if destination:
             response = self._t(update, "url_submitted", destination=destination)
         else:

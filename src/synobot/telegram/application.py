@@ -119,6 +119,11 @@ def build_application(
             application.add_handler(CommandHandler(command, callback))
     application.add_handler(MessageHandler(filters.Document.ALL, handlers.document))
     application.add_handler(CallbackQueryHandler(handlers.task_control, pattern=r"^task:"))
+    destination_control = getattr(handlers, "destination_control", None)
+    if destination_control is not None:
+        application.add_handler(
+            CallbackQueryHandler(destination_control, pattern=r"^dest:")
+        )
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.text)
     )

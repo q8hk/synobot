@@ -55,7 +55,7 @@ def test_schema_one_database_is_migrated_without_losing_metadata(tmp_path):
     connection.close()
 
     repository = SQLiteTaskRepository(path)
-    assert repository.get_metadata("schema_version") == "2"
+    assert repository.get_metadata("schema_version") == "3"
     assert repository.get_metadata("custom") == "preserved"
     assert repository.get_notification_preference(9) == NotificationPreference(9)
 

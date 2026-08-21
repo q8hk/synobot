@@ -27,6 +27,11 @@ def _totp_provider(secret: Optional[str]) -> Optional[Callable[[], str]]:
 def persistent_task(task: SynologyTask) -> Task:
     """Translate the transport model into the persistence-domain model."""
     transfer = task.transfer
+    additional = task.raw.get("additional")
+    additional = additional if isinstance(additional, dict) else {}
+    detail = additional.get("detail")
+    detail = detail if isinstance(detail, dict) else {}
+    destination = detail.get("destination") or task.raw.get("destination")
     return Task(
         task_id=task.task_id,
         title=task.title,
@@ -37,6 +42,7 @@ def persistent_task(task: SynologyTask) -> Task:
         uploaded_bytes=transfer.uploaded_bytes if transfer else 0,
         download_speed=transfer.download_speed if transfer else 0,
         upload_speed=transfer.upload_speed if transfer else 0,
+        destination=str(destination) if destination else None,
     )
 
 

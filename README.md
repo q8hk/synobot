@@ -30,8 +30,8 @@ does not need to run on the NAS itself.
 | `/notifications quiet <start> <end> <timezone>` | Viewer | Set personal quiet hours, for example `22:00 07:00 Asia/Kuwait` |
 | `/dslogin` | Administrator | Refresh the DSM login |
 | `/add <URL>` | Operator | Submit an HTTP, HTTPS, FTP, or magnet URL |
-| `/destination [folder\|clear]` | Operator | Select the DSM destination for new submissions |
-| `/destinations` | Operator | Show the five recently selected destinations |
+| `/destination [folder\|clear]` | Operator | Choose a ranked DSM destination or set a folder manually |
+| `/destinations` | Operator | Show more destinations derived from DSM history |
 | `/language <en\|ar>` | Viewer | Select English or Arabic responses |
 | Magnet or supported YouTube URL | Operator | Submit the URL |
 | `.torrent` document | Operator | Submit a torrent file safely |
@@ -100,6 +100,7 @@ Secret settings support a `_FILE` variant. When both are present, `_FILE` takes 
 | `DSM_TLS_VERIFY` | No | `true` | Verify DSM's TLS certificate |
 | `DSM_REQUEST_TIMEOUT_SECONDS` | No | `20` | Positive HTTP timeout in seconds |
 | `DSM_POLL_INTERVAL_SECONDS` | No | `10` | Positive normal polling interval in seconds |
+| `DSM_DESTINATION_PRESETS` | No | `TVShows,Movies,Download` | Comma-separated fallback destinations used by the Telegram chooser |
 | `DATABASE_PATH` | No | `/data/synobot.db` | SQLite database path |
 | `DSM_TORRENT_WATCH_PATH` | No | — | Compatibility path for a mounted Download Station watch folder |
 | `DSM_AUTO_DELETE` | No | `false` | Compatibility toggle retained during migration |
@@ -118,6 +119,13 @@ Setting verification to `false` permits interception of DSM credentials and task
 ## Data and backups
 
 The SQLite database at `DATABASE_PATH` contains observed tasks, transitions, notification delivery state, and migration markers. It does not store DSM or Telegram credentials.
+
+It also stores each Telegram user's destination preference and successful-folder
+history. `/destination` ranks folders from live DSM task history, durable personal
+usage, and `DSM_DESTINATION_PRESETS`. Temporary DSM paths ending in `/incomplete`
+are presented as their parent destination. The chooser shows the three strongest
+matches without exposing internal usage counters; `/destinations` shows additional
+choices. Manual paths remain available with `/destination <folder>`.
 
 Stop Synobot before taking a simple filesystem copy of the database:
 

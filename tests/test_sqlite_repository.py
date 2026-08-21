@@ -1,4 +1,5 @@
 import json
+import sqlite3
 import threading
 from pathlib import Path
 
@@ -15,8 +16,54 @@ def task(task_id="dbid_1", status="downloading", downloaded=0):
 def test_schema_and_context_manager(tmp_path: Path):
     path = tmp_path / "data" / "synobot.db"
     with SQLiteTaskRepository(path) as repository:
-        assert repository.get_metadata("schema_version") == "2"
+        assert repository.get_metadata("schema_version") == "3"
     assert path.exists()
+
+
+def test_schema_two_is_upgraded_with_destination_storage(tmp_path: Path):
+    path = tmp_path / "old.db"
+    connection = sqlite3.connect(path)
+    connection.executescript(
+        """
+        CREATE TABLE app_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        INSERT INTO app_metadata VALUES ('schema_version', '2');
+        CREATE TABLE tasks (
+            task_id TEXT PRIMARY KEY,title TEXT NOT NULL,size_bytes INTEGER NOT NULL,
+            owner TEXT NOT NULL,status TEXT NOT NULL,downloaded_bytes INTEGER NOT NULL DEFAULT 0,
+            uploaded_bytes INTEGER NOT NULL DEFAULT 0,download_speed INTEGER NOT NULL DEFAULT 0,
+            upload_speed INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,
+            completed_at TEXT,removed_at TEXT
+        );
+        """
+    )
+    connection.close()
+    repository = SQLiteTaskRepository(path)
+    assert repository.get_metadata("schema_version") == "3"
+    repository.upsert(Task("one", "One", 1, "owner", "waiting", destination="Movies"))
+    assert repository.get("one").destination == "Movies"
+
+
+def test_destination_preferences_usage_and_ranking_survive_restart(tmp_path: Path):
+    path = tmp_path / "destinations.db"
+    first = SQLiteTaskRepository(path)
+    service = TaskService(first)
+    service.set_destination_preference(7, "Download/YouTube")
+    service.record_destination_use(7, "Download/YouTube")
+    service.record_destination_use(7, "Download/YouTube")
+    first.close()
+
+    second = SQLiteTaskRepository(path)
+    service = TaskService(second)
+    assert service.destination_preference(7) == "Download/YouTube"
+    ranked = service.rank_destinations(
+        7,
+        ["Movies", "Movies", "TVShows", "TVShows", "TVShows"],
+        ["TVShows", "Movies", "Download"],
+    )
+    assert ranked[:3] == ["TVShows", "Movies", "Download/YouTube"]
+    service.set_destination_preference(7, None)
+    second.close()
+    assert SQLiteTaskRepository(path).get_destination_preference(7) is None
 
 
 def test_upsert_only_creates_events_for_meaningful_changes(tmp_path: Path):

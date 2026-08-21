@@ -20,6 +20,7 @@ def test_minimal_config_is_immutable():
     assert settings.telegram_admin_user_ids == (123, 456)
     assert settings.telegram_notify_user_ids == (123,)
     assert settings.dsm_base_url == "https://nas.local:5001"
+    assert settings.dsm_destination_presets == ("TVShows", "Movies", "Download")
     with pytest.raises(FrozenInstanceError):
         settings.dsm_username = "changed"
 
@@ -79,3 +80,10 @@ def test_paths_intervals_and_optional_secrets():
     assert settings.dsm_request_timeout_seconds == 2.5
     assert settings.dsm_password == "pw"
     assert settings.timezone == "Asia/Kuwait"
+
+
+def test_destination_presets_are_cleaned_deduplicated_and_validated():
+    settings = Settings.from_env(dict(BASE, DSM_DESTINATION_PRESETS=" /TVShows/, Movies,TVShows "))
+    assert settings.dsm_destination_presets == ("TVShows", "Movies")
+    with pytest.raises(ConfigurationError, match="DESTINATION_PRESETS"):
+        Settings.from_env(dict(BASE, DSM_DESTINATION_PRESETS=" , "))
