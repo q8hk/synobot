@@ -156,6 +156,67 @@ def test_add_requires_one_valid_url_and_confirms_after_success():
     )
 
 
+def test_incomplete_add_consumes_next_message_as_its_url():
+    handlers, client = adapter()
+    prompt = update(user_id=2)
+    run(handlers.add(prompt, SimpleNamespace(args=[])))
+    assert "incomplete" in prompt.effective_message.reply_text.await_args.args[0]
+
+    follow_up = update(user_id=2, text="https://example.com/file.iso")
+    run(handlers.text(follow_up, SimpleNamespace()))
+
+    client.create_url.assert_called_once_with("https://example.com/file.iso")
+    assert 2 not in handlers._pending_commands
+
+
+def test_incomplete_command_can_be_cancelled_by_text():
+    handlers, client = adapter()
+    prompt = update(user_id=2)
+    run(handlers.add(prompt, SimpleNamespace(args=[])))
+    cancellation = update(user_id=2, text="cancel")
+    run(handlers.text(cancellation, SimpleNamespace()))
+    client.create_url.assert_not_called()
+    assert cancellation.effective_message.reply_text.await_args.args[0] == "Command cancelled."
+
+
+def test_incomplete_destination_consumes_typed_path():
+    handlers, client = adapter()
+    handlers.core.tasks.rank_destinations.return_value = ["TVShows", "Movies", "Download"]
+    client.list_tasks.return_value = []
+    prompt = update(user_id=2)
+    run(handlers.destination(prompt, SimpleNamespace(args=[])))
+
+    follow_up = update(user_id=2, text="Download/YouTube")
+    run(handlers.text(follow_up, SimpleNamespace()))
+
+    handlers.core.tasks.set_destination_preference.assert_called_once_with(
+        2, "Download/YouTube"
+    )
+
+
+def test_language_and_notification_buttons_resume_original_commands():
+    handlers, _ = adapter()
+    language_prompt = update(user_id=3)
+    run(handlers.language(language_prompt, SimpleNamespace(args=[])))
+    language_choice = update(user_id=3, callback_data="cmd:language:ar")
+    run(handlers.command_follow_up(language_choice, SimpleNamespace()))
+    assert handlers._languages[3] == "ar"
+
+    notification_prompt = update(user_id=3)
+    run(handlers.notifications(notification_prompt, SimpleNamespace(args=[])))
+    quiet_choice = update(user_id=3, callback_data="cmd:notifications:quiet")
+    run(handlers.command_follow_up(quiet_choice, SimpleNamespace()))
+    quiet_values = update(user_id=3, text="22:00 07:00 Asia/Riyadh")
+    run(handlers.text(quiet_values, SimpleNamespace()))
+    handlers.core.tasks.set_notification_preference.assert_called_once_with(
+        3,
+        enabled=True,
+        quiet_start="22:00",
+        quiet_end="07:00",
+        timezone_name="Asia/Riyadh",
+    )
+
+
 def test_rejected_url_does_not_claim_success():
     handlers, client = adapter()
     client.create_url.side_effect = SynologyConnectionError("contains no secrets")

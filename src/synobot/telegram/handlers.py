@@ -8,8 +8,10 @@ behind ``asyncio.to_thread`` and makes the handlers straightforward to test.
 import asyncio
 import hashlib
 import logging
+import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 from typing import Any, Optional
 from urllib.parse import urlsplit
 
@@ -26,6 +28,7 @@ LOGGER = logging.getLogger(__name__)
 _YOUTUBE_HOSTS = frozenset(
     ("youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "www.youtu.be")
 )
+_FOLLOW_UP_TTL_SECONDS = 300
 
 
 def _bytes(value: int) -> str:
@@ -50,6 +53,7 @@ class TelegramHandlers:
         self.authorization = authorization
         self.settings = settings
         self._languages: dict[int, str] = {}
+        self._pending_commands: dict[int, tuple[str, float]] = {}
 
     @staticmethod
     def _user_id(update: Any) -> Optional[int]:
@@ -97,6 +101,61 @@ class TelegramHandlers:
         if "download" in lowered:
             return "📥 {}".format(destination)
         return "📂 {}".format(destination)
+
+    def _set_pending(self, update: Any, command: str) -> None:
+        user_id = self._user_id(update)
+        if user_id is not None:
+            self._pending_commands[user_id] = (
+                command, time.monotonic() + _FOLLOW_UP_TTL_SECONDS
+            )
+
+    def _take_pending(self, update: Any) -> Optional[str]:
+        user_id = self._user_id(update)
+        if user_id is None:
+            return None
+        pending = self._pending_commands.pop(user_id, None)
+        if pending is None or pending[1] < time.monotonic():
+            return None
+        return pending[0]
+
+    def _clear_pending(self, update: Any) -> None:
+        user_id = self._user_id(update)
+        if user_id is not None:
+            self._pending_commands.pop(user_id, None)
+
+    async def _prompt_language(self, update: Any) -> None:
+        self._set_pending(update, "language")
+        markup = InlineKeyboardMarkup([[
+            InlineKeyboardButton("English", callback_data="cmd:language:en"),
+            InlineKeyboardButton("العربية", callback_data="cmd:language:ar"),
+        ], [InlineKeyboardButton("Cancel", callback_data="cmd:cancel")]])
+        message = getattr(update, "effective_message", None)
+        if message is not None:
+            await message.reply_text(self._t(update, "language_prompt"), reply_markup=markup)
+
+    async def _prompt_notifications(self, update: Any) -> None:
+        self._set_pending(update, "notifications")
+        markup = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔔 On", callback_data="cmd:notifications:on"),
+             InlineKeyboardButton("🔕 Off", callback_data="cmd:notifications:off")],
+            [InlineKeyboardButton("🌙 Quiet hours", callback_data="cmd:notifications:quiet"),
+             InlineKeyboardButton("↺ Reset", callback_data="cmd:notifications:clear")],
+            [InlineKeyboardButton("Cancel", callback_data="cmd:cancel")],
+        ])
+        message = getattr(update, "effective_message", None)
+        if message is not None:
+            await message.reply_text(
+                self._t(update, "notifications_prompt"), reply_markup=markup
+            )
+
+    async def _prompt_add(self, update: Any) -> None:
+        self._set_pending(update, "add")
+        markup = InlineKeyboardMarkup([[
+            InlineKeyboardButton("Cancel", callback_data="cmd:cancel")
+        ]])
+        message = getattr(update, "effective_message", None)
+        if message is not None:
+            await message.reply_text(self._t(update, "add_prompt"), reply_markup=markup)
 
     async def _destination_choices(self, update: Any) -> list[str]:
         user_id = self._user_id(update)
@@ -175,10 +234,14 @@ class TelegramHandlers:
         if not await self._authorize(update):
             return
         args = getattr(context, "args", None) or []
+        if not args:
+            await self._prompt_language(update)
+            return
         requested = str(args[0]).strip().lower() if len(args) == 1 else ""
         if requested not in SUPPORTED_LANGUAGES:
-            await self._reply(update, self._t(update, "language_usage"))
+            await self._prompt_language(update)
             return
+        self._clear_pending(update)
         user_id = self._user_id(update)
         if user_id is not None:
             self._languages[user_id] = requested
@@ -189,6 +252,7 @@ class TelegramHandlers:
             return
         args = getattr(context, "args", None) or []
         if not args:
+            self._set_pending(update, "destination")
             current = await self._destination(update)
             key = "destination_current" if current else "destination_default"
             values = {"destination": current} if current else {}
@@ -196,7 +260,8 @@ class TelegramHandlers:
             message = getattr(update, "effective_message", None)
             if message is not None:
                 await message.reply_text(
-                    self._t(update, key, **values) + "\n\n" + self._t(update, "destination_choose"),
+                    self._t(update, key, **values) + "\n\n"
+                    + self._t(update, "destination_incomplete"),
                     reply_markup=markup,
                 )
             return
@@ -207,16 +272,26 @@ class TelegramHandlers:
                 await asyncio.to_thread(
                     self.core.tasks.set_destination_preference, user_id, None
                 )
+            self._clear_pending(update)
             await self._reply(update, self._t(update, "destination_cleared"))
             return
         candidate = self._canonical_destination(candidate)
         if candidate is None:
-            await self._reply(update, self._t(update, "destination_invalid"))
+            self._set_pending(update, "destination")
+            markup, _ = await self._destination_markup(update)
+            message = getattr(update, "effective_message", None)
+            if message is not None:
+                await message.reply_text(
+                    self._t(update, "destination_invalid") + "\n\n"
+                    + self._t(update, "destination_choose"),
+                    reply_markup=markup,
+                )
             return
         if user_id is not None:
             await asyncio.to_thread(
                 self.core.tasks.set_destination_preference, user_id, candidate
             )
+        self._clear_pending(update)
         await self._reply(update, self._t(update, "destination_set", destination=candidate))
 
     async def destinations(self, update: Any, context: Any) -> None:
@@ -249,6 +324,7 @@ class TelegramHandlers:
                 self.core.tasks.set_destination_preference, user_id, None
             )
             await query.edit_message_reply_markup(reply_markup=None)
+            self._clear_pending(update)
             await self._reply(update, self._t(update, "destination_cleared"))
             return
         if data == "dest:more":
@@ -270,6 +346,7 @@ class TelegramHandlers:
         await asyncio.to_thread(
             self.core.tasks.set_destination_preference, user_id, destination
         )
+        self._clear_pending(update)
         await query.edit_message_reply_markup(reply_markup=None)
         await self._reply(
             update, self._t(update, "destination_set", destination=destination)
@@ -352,8 +429,10 @@ class TelegramHandlers:
             return
         user_id = self._user_id(update)
         args = [str(value) for value in (getattr(context, "args", None) or [])]
-        if user_id is None or not args:
-            await self._reply(update, self._t(update, "notifications_usage"))
+        if user_id is None:
+            return
+        if not args:
+            await self._prompt_notifications(update)
             return
         action = args[0].lower()
         try:
@@ -379,9 +458,42 @@ class TelegramHandlers:
             else:
                 raise ValueError("invalid notification preference command")
         except ValueError:
-            await self._reply(update, self._t(update, "notifications_usage"))
+            await self._prompt_notifications(update)
             return
+        self._clear_pending(update)
         await self._reply(update, self._t(update, "notifications_set"))
+
+    async def command_follow_up(self, update: Any, context: Any) -> None:
+        """Resume an incomplete parameterized command from an inline choice."""
+        del context
+        query = getattr(update, "callback_query", None)
+        if query is None:
+            return
+        await query.answer()
+        data = str(getattr(query, "data", "") or "")
+        if data == "cmd:cancel":
+            self._clear_pending(update)
+            await query.edit_message_reply_markup(reply_markup=None)
+            await self._reply(update, self._t(update, "follow_up_cancelled"))
+            return
+        parts = data.split(":", 2)
+        if len(parts) != 3 or parts[0] != "cmd":
+            return
+        command, value = parts[1], parts[2]
+        if command == "language":
+            await self.language(update, SimpleNamespace(args=[value]))
+        elif command == "notifications" and value == "quiet":
+            if not await self._authorize(update):
+                return
+            self._set_pending(update, "notifications_quiet")
+            await query.edit_message_reply_markup(reply_markup=None)
+            await self._reply(update, self._t(update, "notifications_quiet_prompt"))
+            return
+        elif command == "notifications":
+            await self.notifications(update, SimpleNamespace(args=[value]))
+        else:
+            return
+        await query.edit_message_reply_markup(reply_markup=None)
 
     async def task_control(self, update: Any, context: Any) -> None:
         """Handle authorized, narrowly-scoped task mutation callbacks."""
@@ -461,12 +573,36 @@ class TelegramHandlers:
         if not await self._authorize(update, Role.OPERATOR):
             return
         args = getattr(context, "args", None) or []
-        if len(args) != 1 or not self._supported_url(args[0], allow_general=True):
-            await self._reply(update, "Usage: /add <HTTP, HTTPS, FTP, or magnet URL>")
+        if not args:
+            await self._prompt_add(update)
             return
+        if len(args) != 1 or not self._supported_url(args[0], allow_general=True):
+            await self._prompt_add(update)
+            return
+        self._clear_pending(update)
         await self._create_url(update, args[0])
 
     async def text(self, update: Any, context: Any) -> None:
+        pending = self._take_pending(update)
+        if pending is not None:
+            message = getattr(update, "effective_message", None)
+            value = str(getattr(message, "text", "") or "").strip()
+            if value.casefold() in ("cancel", "/cancel"):
+                await self._reply(update, self._t(update, "follow_up_cancelled"))
+                return
+            if pending == "destination":
+                await self.destination(update, SimpleNamespace(args=[value]))
+            elif pending == "language":
+                await self.language(update, SimpleNamespace(args=[value]))
+            elif pending == "add":
+                await self.add(update, SimpleNamespace(args=[value]))
+            elif pending == "notifications":
+                await self.notifications(update, SimpleNamespace(args=value.split()))
+            elif pending == "notifications_quiet":
+                await self.notifications(
+                    update, SimpleNamespace(args=["quiet", *value.split()])
+                )
+            return
         del context
         if not await self._authorize(update, Role.OPERATOR):
             return
