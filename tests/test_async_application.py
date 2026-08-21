@@ -13,7 +13,12 @@ class FakeBuilder:
     last = None
 
     def __init__(self):
-        self.value = SimpleNamespace(bot_data={}, handlers=[], error_handlers=[])
+        self.value = SimpleNamespace(
+            bot=SimpleNamespace(set_my_commands=AsyncMock()),
+            bot_data={},
+            handlers=[],
+            error_handlers=[],
+        )
         FakeBuilder.last = self
 
     def token(self, value):
@@ -118,6 +123,9 @@ async def test_lifecycle_starts_stops_and_closes_exactly_once(ptb):
     await FakeBuilder.last.shutdown_callback(app)
 
     monitor.start.assert_awaited_once_with()
+    app.bot.set_my_commands.assert_awaited_once()
+    menu = app.bot.set_my_commands.await_args.args[0]
+    assert [(item.command, item.description) for item in menu] == list(adapter.COMMAND_MENU)
     monitor.stop.assert_awaited_once_with()
     components.close.assert_called_once_with()
 
