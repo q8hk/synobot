@@ -1,5 +1,6 @@
 """Composition tests for the PTB application adapter (no network traffic)."""
 
+import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -128,6 +129,29 @@ async def test_lifecycle_starts_stops_and_closes_exactly_once(ptb):
     assert [(item.command, item.description) for item in menu] == list(adapter.COMMAND_MENU)
     monitor.stop.assert_awaited_once_with()
     components.close.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_startup_does_not_await_long_running_monitor_task(ptb):
+    settings = SimpleNamespace(telegram_bot_token="secret")
+    components = Mock()
+    release = asyncio.Event()
+
+    async def background_monitor():
+        await release.wait()
+
+    task = asyncio.create_task(background_monitor())
+    monitor = SimpleNamespace(start=Mock(return_value=task), stop=AsyncMock())
+    app = adapter.build_application(
+        settings, components, handlers=fake_handlers(), monitor=monitor
+    )
+
+    await asyncio.wait_for(FakeBuilder.last.init_callback(app), timeout=0.1)
+
+    assert not task.done()
+    monitor.start.assert_called_once_with()
+    release.set()
+    await task
 
 
 @pytest.mark.asyncio
